@@ -30,7 +30,7 @@ IntelligenceAudioProcessor::IntelligenceAudioProcessor()
 
 void IntelligenceAudioProcessor::prepareToPlay (double sampleRate, int)
 {
-    currentSampleRate = sampleRate > 1000.0 ? sampleRate : 44100.0;
+    currentSampleRate.store (sampleRate > 1000.0 ? sampleRate : 44100.0, std::memory_order_relaxed);
     vocalAnalyzer.reset();
     beatAnalyzer.reset();
     maskingProcessor.prepare (sampleRate);
@@ -58,7 +58,7 @@ std::array<float, IntelligentMaskingProcessor::bandCount>
 IntelligenceAudioProcessor::getBandLevels (const SpectralAnalyzer& analyzer) const noexcept
 {
     std::array<float, IntelligentMaskingProcessor::bandCount> levels {};
-    const auto binHz = static_cast<float> (currentSampleRate) / static_cast<float> (SpectralAnalyzer::fftSize);
+    const auto binHz = static_cast<float> (currentSampleRate.load (std::memory_order_relaxed)) / static_cast<float> (SpectralAnalyzer::fftSize);
     for (size_t band = 0; band < levels.size(); ++band)
     {
         const auto centreBin = juce::roundToInt (bandCentres[band] / binHz);
