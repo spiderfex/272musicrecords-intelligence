@@ -25,6 +25,8 @@ public:
     void setDepth (float value) noexcept { depth = juce::jlimit (0.0f, 1.0f, value); }
     void setTame (float value) noexcept { tame = juce::jlimit (0.0f, 1.0f, value); }
     void setRecover (float value) noexcept { recover = juce::jlimit (0.0f, 1.0f, value); }
+    void setBias (float value) noexcept { bias = juce::jlimit (-1.0f, 1.0f, value); }
+    void setBrighten (float value) noexcept { brighten = juce::jlimit (0.0f, 1.0f, value); }
     void setEnabled (bool value) noexcept
     {
         enabled = value;
@@ -49,12 +51,14 @@ public:
             const auto v = juce::jmax (vocalBands[static_cast<size_t> (band)], 1.0e-7f);
             const auto b = juce::jmax (beatBands[static_cast<size_t> (band)], 1.0e-7f);
             const auto ratioDb = juce::Decibels::gainToDecibels (b / v, -36.0f);
-            const auto overlap = juce::jlimit (0.0f, 1.0f, (ratioDb + 18.0f) / 24.0f);
+            const auto overlap = juce::jlimit (0.0f, 1.0f, (ratioDb + 18.0f + bias * 9.0f) / 24.0f);
             const auto vocalPresence = juce::jlimit (0.0f, 1.0f,
                 (juce::Decibels::gainToDecibels (v, -90.0f) + 60.0f) / 36.0f);
             const auto tameCut = overlap * vocalPresence * tame * depth * 4.5f;
             const auto recoverLift = (1.0f - overlap) * vocalPresence * recover * depth * 1.2f;
-            targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 1.2f, recoverLift - tameCut);
+            const auto highBandBrighten = band >= 4 ? brighten * recover * depth * 1.5f : 0.0f;
+            targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 2.7f,
+                recoverLift + highBandBrighten - tameCut);
         }
         const auto smoothing = 1.0f - std::exp (-static_cast<float> (vocal.getNumSamples())
                                                   / (static_cast<float> (sr) * 0.035f));
@@ -107,7 +111,7 @@ private:
         c.a2 = (1.0f - alpha / A) / a0;
     }
     double sr = 44100.0;
-    float depth = 0.5f, tame = 0.7f, recover = 0.25f;
+    float depth = 0.5f, tame = 0.7f, recover = 0.25f, bias = 0.0f, brighten = 0.0f;
     bool enabled = false;
     std::array<Coefficients, bandCount> coeffs {};
     std::array<std::array<State, bandCount>, 2> states {};
