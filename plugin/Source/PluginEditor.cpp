@@ -103,8 +103,8 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
                                          static_cast<float> (h) - 284.0f);
     g.setColour (panel);
     g.fillRoundedRectangle (graph, 8.0f);
-    label (g, "VOCAL SPECTRUM  ·  PRE", { 40, 121, 260, 22 }, 11, white, true);
-    label (g, "TOTAL EQ RESPONSE", { 40, 147, 260, 16 }, 9, cyan, true);
+    label (g, "VOCAL SPECTRUM  ·  PRE", { 40, 171, 260, 16 }, 10, white, true);
+    label (g, "TOTAL EQ RESPONSE", { 40, 190, 260, 14 }, 8, cyan, true);
 
     auto plot = graph.withTrimmedTop (54).reduced (14, 20);
     constexpr float minDb = -12.0f;
