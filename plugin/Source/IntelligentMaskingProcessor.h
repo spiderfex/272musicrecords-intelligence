@@ -19,6 +19,7 @@ public:
     {
         for (auto& channel : states) for (auto& state : channel) state = {};
         for (auto& gain : smoothedDb) gain = 0.0f;
+        for (auto& gain : displayedReductionDb) gain.store (0.0f, std::memory_order_relaxed);
     }
     void setDepth (float value) noexcept { depth = juce::jlimit (0.0f, 1.0f, value); }
     void setTame (float value) noexcept { tame = juce::jlimit (0.0f, 1.0f, value); }
@@ -46,8 +47,12 @@ public:
         const auto smoothing = 1.0f - std::exp (-static_cast<float> (vocal.getNumSamples())
                                                   / (static_cast<float> (sr) * 0.035f));
         for (int band = 0; band < bandCount; ++band)
+        {
             smoothedDb[static_cast<size_t> (band)] += smoothing
                 * (targetDb[static_cast<size_t> (band)] - smoothedDb[static_cast<size_t> (band)]);
+            displayedReductionDb[static_cast<size_t> (band)].store (
+                smoothedDb[static_cast<size_t> (band)], std::memory_order_relaxed);
+        }
         for (int band = 0; band < bandCount; ++band)
             updateCoefficients (band, smoothedDb[static_cast<size_t> (band)]);
         for (int channel = 0; channel < channels; ++channel)
@@ -71,7 +76,8 @@ public:
     }
     float getReductionDb (int band) const noexcept
     {
-        return band >= 0 && band < bandCount ? smoothedDb[static_cast<size_t> (band)] : 0.0f;
+        return band >= 0 && band < bandCount
+            ? displayedReductionDb[static_cast<size_t> (band)].load (std::memory_order_relaxed) : 0.0f;
     }
 private:
     struct Coefficients { float b0=1, b1=0, b2=0, a1=0, a2=0; };
@@ -94,4 +100,5 @@ private:
     std::array<Coefficients, bandCount> coeffs {};
     std::array<std::array<State, bandCount>, 2> states {};
     std::array<float, bandCount> smoothedDb {};
+    std::array<std::atomic<float>, bandCount> displayedReductionDb {};
 };
