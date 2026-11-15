@@ -227,14 +227,13 @@ void IntelligenceAudioProcessorEditor::resized()
     const int topY = 26;
     intelligenceButton.setBounds (getWidth() - 170, topY, 145, 28);
     bypassButton.setBounds (getWidth() - 170, topY + 30, 145, 24);
-    const int left = 300;
-    const int available = getWidth() - left - 190;
-    const int cell = available / 4;
+    const int cell = (getWidth() - 220) / 4;
     auto place = [cell] (juce::Label& l, juce::Slider& s, int index)
     {
-        const int x = 24 + index * cell;
-        l.setBounds (x, 24, 78, 20);
-        s.setBounds (x, 43, cell - 10, 25);
+        const int x = 24 + (index % 4) * cell;
+        const int y = 20 + (index / 4) * 42;
+        l.setBounds (x, y, 78, 18);
+        s.setBounds (x, y + 18, cell - 10, 22);
     };
     place (recoverLabel, recoverSlider, 0);
     place (tameLabel, tameSlider, 1);
