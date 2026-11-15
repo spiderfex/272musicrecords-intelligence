@@ -49,6 +49,7 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     std::array<float, IntelligentMaskingProcessor::bandCount> getVocalBandLevels() const noexcept;
+    std::array<float, IntelligentMaskingProcessor::bandCount> getVocalResonanceScores() const noexcept;
 
     SpectralAnalyzer vocalAnalyzer;
     IntelligentMaskingProcessor maskingProcessor;
