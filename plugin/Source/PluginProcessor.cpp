@@ -111,7 +111,8 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (hasBeat && ! bypassed)
         maskingProcessor.process (vocalOutput, getBandLevels (vocalAnalyzer), getBandLevels (beatAnalyzer));
 
-    const auto outputGain = juce::Decibels:: decibelsToGain (
+    // True bypass: leave the vocal path bit-transparent, including output/boost gain.
+    const auto outputGain = bypassed ? 1.0f : juce::Decibels::decibelsToGain (
         parameters.getRawParameterValue ("output")->load()
         + parameters.getRawParameterValue ("boost")->load());
     for (int channel = 0; channel < channels; ++channel)
