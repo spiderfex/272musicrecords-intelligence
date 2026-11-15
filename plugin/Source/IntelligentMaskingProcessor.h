@@ -8,8 +8,9 @@
 class IntelligentMaskingProcessor final
 {
 public:
-    static constexpr int bandCount = 6;
-    static constexpr std::array<float, bandCount> centres { 180.0f, 350.0f, 700.0f, 1400.0f, 2800.0f, 5600.0f };
+    static constexpr int bandCount = 8;
+    static constexpr std::array<float, bandCount> centres
+        { 100.0f, 220.0f, 450.0f, 900.0f, 1800.0f, 3600.0f, 7200.0f, 12000.0f };
 
     void prepare (double sampleRate) noexcept
     {
@@ -40,8 +41,8 @@ public:
         }
     }
 
-    void process (juce::AudioBuffer<float>& vocal, const std::array<float, 6>& vocalBands,
-                  const std::array<float, 6>& beatBands) noexcept
+    void process (juce::AudioBuffer<float>& vocal, const std::array<float, bandCount>& vocalBands,
+                  const std::array<float, bandCount>& beatBands) noexcept
     {
         const auto channels = juce::jmin (2, vocal.getNumChannels());
         if (! enabled || channels == 0) return;
@@ -50,14 +51,20 @@ public:
         {
             const auto v = juce::jmax (vocalBands[static_cast<size_t> (band)], 1.0e-7f);
             const auto b = juce::jmax (beatBands[static_cast<size_t> (band)], 1.0e-7f);
-            const auto ratioDb = juce::Decibels::gainToDecibels (b / v, -36.0f);
-            const auto overlap = juce::jlimit (0.0f, 1.0f, (ratioDb + 18.0f + bias * 9.0f) / 24.0f);
-            const auto vocalPresence = juce::jlimit (0.0f, 1.0f,
-                (juce::Decibels::gainToDecibels (v, -90.0f) + 60.0f) / 36.0f);
-            const auto tameCut = overlap * vocalPresence * tame * depth * 4.5f;
-            const auto recoverLift = (1.0f - overlap) * vocalPresence * recover * depth * 1.2f;
-            const auto highBandBrighten = band >= 4 ? brighten * recover * depth * 1.5f : 0.0f;
-            targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 2.7f,
+            const auto vocalDb = juce::Decibels::gainToDecibels (v, -96.0f);
+            const auto beatDb = juce::Decibels::gainToDecibels (b, -96.0f);
+
+            // Positive competition means the beat is stronger in this band.
+            // Since this processor outputs the vocal only, Recover gently lifts
+            // under-represented vocal bands while Tame restrains vocal bands
+            // that already dominate the reference.
+            const auto competition = juce::jlimit (-1.0f, 1.0f,
+                (beatDb - vocalDb + bias * 12.0f) / 18.0f);
+            const auto vocalPresence = juce::jlimit (0.0f, 1.0f, (vocalDb + 66.0f) / 42.0f);
+            const auto recoverLift = juce::jmax (0.0f, competition) * recover * depth * 4.0f;
+            const auto tameCut = juce::jmax (0.0f, -competition) * vocalPresence * tame * depth * 3.0f;
+            const auto highBandBrighten = band >= 6 ? brighten * recover * depth * 1.5f : 0.0f;
+            targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 5.0f,
                 recoverLift + highBandBrighten - tameCut);
         }
         const auto smoothing = 1.0f - std::exp (-static_cast<float> (vocal.getNumSamples())
@@ -100,7 +107,7 @@ private:
     struct State { float z1=0, z2=0; };
     void updateCoefficients (int band, float gainDb) noexcept
     {
-        constexpr float q = 0.85f;
+        constexpr float q = 1.05f;
         const auto A = std::pow (10.0f, gainDb / 40.0f);
         const auto w = juce::MathConstants<float>::twoPi * centres[static_cast<size_t> (band)] / static_cast<float> (sr);
         const auto cs = std::cos (w), sn = std::sin (w), alpha = sn / (2.0f * q);
