@@ -88,19 +88,17 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (panel);
     g.fillRoundedRectangle (graph, 8.0f);
     label (g, "SPECTRAL INTELLIGENCE", { 40, 121, 260, 22 }, 11, white, true);
-    label (g, "VOCAL", { 40, 147, 60, 16 }, 9, cyan, true);
-    label (g, "BEAT SIDECHAIN", { 104, 147, 120, 16 }, 9, orange, true);
-    label (g, "DYNAMIC EQ", { 235, 147, 100, 16 }, 9, green, true);
-    label (g, "dB", { 28, 174, 24, 14 }, 8, muted, false);
+    label (g, "DYNAMIC EQ RESPONSE", { 40, 147, 260, 16 }, 9, cyan, true);
+    label (g, "+12 dB", { 25, 174, 42, 14 }, 8, muted);
+    label (g, "0 dB", { 25, 0, 42, 14 }, 8, muted);
+    label (g, "-12 dB", { 25, 0, 42, 14 }, 8, muted);
 
     auto plot = graph.withTrimmedTop (54).reduced (14, 20);
+    constexpr float minDb = -12.0f;
+    constexpr float maxDb = 12.0f;
     const auto sampleRate = audioProcessor.getAnalysisSampleRate();
     const float minHz = 20.0f;
     const float maxHz = juce::jmin (20000.0f, static_cast<float> (sampleRate * 0.48));
-    // Fixed dBFS display range: grid and spectrum stay anchored.
-    // Signal level changes move the trace, never the scale or grid.
-    constexpr float minDb = -96.0f;
-    constexpr float maxDb = 0.0f;
     const auto xForFrequency = [&] (float hz)
     {
         const auto norm = std::log (juce::jlimit (minHz, maxHz, hz) / minHz)
@@ -127,52 +125,59 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
         label (g, tickText, { juce::roundToInt (x) - 20, juce::roundToInt (plot.getBottom()) + 3, 40, 14 },
                8, muted, false, juce::Justification::centred);
     }
-    for (int db = -90; db <= 0; db += 18)
+    for (int db = -12; db <= 12; db += 3)
     {
         const auto y = yForDb (static_cast<float> (db));
-        g.setColour (grid.withAlpha (0.65f));
+        g.setColour (db == 0 ? cyan.withAlpha (0.8f) : grid.withAlpha (0.65f));
         g.drawHorizontalLine (juce::roundToInt (y), plot.getX(), plot.getRight());
-        label (g, juce::String (db), { juce::roundToInt (plot.getX()) - 34, juce::roundToInt (y) - 7, 28, 14 },
-               8, muted, false, juce::Justification::centredRight);
+        if (db % 6 == 0)
+            label (g, juce::String (db > 0 ? "+" : "") + juce::String (db) + " dB",
+                   { juce::roundToInt (plot.getX()) - 46, juce::roundToInt (y) - 7, 42, 14 },
+                   8, muted, false, juce::Justification::centredRight);
     }
 
-    juce::Path vocal, beat;
-    constexpr int points = 512;
-    for (int i = 0; i < points; ++i)
-    {
-        const auto norm = static_cast<float> (i) / static_cast<float> (points - 1);
-        const auto hz = minHz * std::pow (maxHz / minHz, norm);
-        const auto bin = juce::jlimit (1, SpectralAnalyzer::spectrumSize - 1,
-            juce::roundToInt (hz * static_cast<float> (SpectralAnalyzer::fftSize) / static_cast<float> (sampleRate)));
-        const auto x = xForFrequency (hz);
-        const auto vocalDb = juce::Decibels::gainToDecibels (audioProcessor.getVocalMagnitude (bin) * 4.0f, minDb);
-        const auto beatDb = juce::Decibels::gainToDecibels (audioProcessor.getBeatMagnitude (bin) * 4.0f, minDb);
-        const auto vy = yForDb (vocalDb);
-        const auto by = yForDb (beatDb);
-        if (i == 0) { vocal.startNewSubPath (x, vy); beat.startNewSubPath (x, by); }
-        else { vocal.lineTo (x, vy); beat.lineTo (x, by); }
-    }
-    g.setColour (cyan.withAlpha (0.95f));
-    g.strokePath (vocal, juce::PathStrokeType (2.0f));
-    g.setColour (orange.withAlpha (0.90f));
-    g.strokePath (beat, juce::PathStrokeType (1.8f));
-
-    // Actual six-band gain-change telemetry, shown as a separate lower overlay.
-    juce::Path correction;
+    // The display is a fixed-scale EQ response, not a moving input spectrum.
+    // Each point is fed by the gain actually applied by the DSP for that band.
+    juce::Path response;
+    juce::Path fill;
+    const auto zeroY = yForDb (0.0f);
+    const auto& centres = IntelligentMaskingProcessor::centres;
+    std::array<juce::Point<float>, IntelligentMaskingProcessor::bandCount> points {};
     for (int band = 0; band < IntelligentMaskingProcessor::bandCount; ++band)
     {
-        const auto hz = IntelligentMaskingProcessor::centres[static_cast<size_t> (band)];
-        const auto x = xForFrequency (hz);
+        const auto hz = centres[static_cast<size_t> (band)];
         const auto gainDb = audioProcessor.getReductionDb (band);
-        const auto y = plot.getBottom() - (juce::jlimit (-4.5f, 1.2f, gainDb) + 4.5f)
-                                           / 5.7f * (plot.getHeight() * 0.28f);
-        if (band == 0) correction.startNewSubPath (x, y);
-        else correction.lineTo (x, y);
-        g.setColour (green);
-        g.fillEllipse (x - 3.0f, y - 3.0f, 6.0f, 6.0f);
+        points[static_cast<size_t> (band)] = { xForFrequency (hz), yForDb (gainDb) };
     }
-    g.setColour (green.withAlpha (0.9f));
-    g.strokePath (correction, juce::PathStrokeType (1.6f));
+    response.startNewSubPath (plot.getX(), zeroY);
+    response.lineTo (points.front().x, points.front().y);
+    for (int band = 1; band < IntelligentMaskingProcessor::bandCount; ++band)
+    {
+        const auto previous = points[static_cast<size_t> (band - 1)];
+        const auto current = points[static_cast<size_t> (band)];
+        const auto midX = (previous.x + current.x) * 0.5f;
+        response.cubicTo (midX, previous.y, midX, current.y, current.x, current.y);
+    }
+    response.lineTo (plot.getRight(), zeroY);
+    fill = response;
+    fill.closeSubPath();
+    g.setColour (cyan.withAlpha (0.10f));
+    g.fillPath (fill);
+
+    juce::Path curve;
+    curve.startNewSubPath (points.front());
+    for (int band = 1; band < IntelligentMaskingProcessor::bandCount; ++band)
+    {
+        const auto previous = points[static_cast<size_t> (band - 1)];
+        const auto current = points[static_cast<size_t> (band)];
+        const auto midX = (previous.x + current.x) * 0.5f;
+        curve.cubicTo (midX, previous.y, midX, current.y, current.x, current.y);
+    }
+    g.setColour (white);
+    g.strokePath (curve, juce::PathStrokeType (2.2f));
+    g.setColour (cyan);
+    for (const auto& point : points)
+        g.fillEllipse (point.x - 2.2f, point.y - 2.2f, 4.4f, 4.4f);
 
     const int sideX = w - 150;
     g.setColour (panel);
