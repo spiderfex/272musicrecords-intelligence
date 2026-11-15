@@ -3,8 +3,7 @@
 
 namespace
 {
-    constexpr std::array<float, IntelligentMaskingProcessor::bandCount> bandCentres
-        { 180.0f, 350.0f, 700.0f, 1400.0f, 2800.0f, 5600.0f };
+    constexpr auto bandCentres = IntelligentMaskingProcessor::centres;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout IntelligenceAudioProcessor::createParameterLayout()
