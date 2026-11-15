@@ -11,7 +11,8 @@ IntelligenceAudioProcessor::IntelligenceAudioProcessor()
 
 void IntelligenceAudioProcessor::prepareToPlay (double, int)
 {
-    // DSP state and preallocated analysis buffers will be initialized here.
+    vocalAnalyzer.reset();
+    beatAnalyzer.reset();
 }
 
 void IntelligenceAudioProcessor::releaseResources()
@@ -50,9 +51,19 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // V0.1 shell: pass the vocal input through unchanged.
     // The beat sidechain is a separate auxiliary input and is never mixed into the output.
-    // Future analysis must use preallocated memory and must not block the audio thread.
+    // Analysis uses fixed-size preallocated buffers and does not block the audio thread.
     auto vocalInput = getBusBuffer (buffer, true, 0);
     auto vocalOutput = getBusBuffer (buffer, false, 0);
+
+    // V0.1 computes independent vocal and beat spectra. It does not alter audio.
+    vocalAnalyzer.processBlock (vocalInput);
+
+    if (auto* sidechainBus = getBus (true, 1);
+        sidechainBus != nullptr && sidechainBus->isEnabled())
+    {
+        auto beatInput = getBusBuffer (buffer, true, 1);
+        beatAnalyzer.processBlock (beatInput);
+    }
 
     const auto channelsToCopy = juce::jmin (vocalInput.getNumChannels(),
                                             vocalOutput.getNumChannels());
