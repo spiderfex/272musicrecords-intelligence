@@ -1,32 +1,27 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-namespace
-{
-    constexpr auto bandCentres = IntelligentMaskingProcessor::centres;
-}
-
 juce::AudioProcessorValueTreeState::ParameterLayout IntelligenceAudioProcessor::createParameterLayout()
 {
     using Float = juce::AudioParameterFloat;
     using Bool = juce::AudioParameterBool;
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    layout.add (std::make_unique<Bool> ("enabled", "Intelligence", false));
-    layout.add (std::make_unique<Float> ("depth", "Depth", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
-    layout.add (std::make_unique<Float> ("tame", "Tame", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.7f));
-    layout.add (std::make_unique<Float> ("recover", "Recover", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.25f));
-    layout.add (std::make_unique<Float> ("bias", "Bias", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
-    layout.add (std::make_unique<Float> ("brighten", "Brighten", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
-    layout.add (std::make_unique<Float> ("boost", "Boost", juce::NormalisableRange<float> (-6.0f, 6.0f, 0.01f), 0.0f));
+
+    layout.add (std::make_unique<Bool> ("enabled", "Intelligence", true));
+    layout.add (std::make_unique<Float> ("recover", "Recover", juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 0.0f));
+    layout.add (std::make_unique<Float> ("tame", "Tame", juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 0.0f));
+    layout.add (std::make_unique<Float> ("bias", "Bias", juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f));
+    layout.add (std::make_unique<Float> ("brighten", "Brighten", juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f));
+    layout.add (std::make_unique<Float> ("boost", "Boost", juce::NormalisableRange<float> (-50.0f, 50.0f, 0.1f), 0.0f));
     layout.add (std::make_unique<Float> ("output", "Output Gain", juce::NormalisableRange<float> (-24.0f, 12.0f, 0.01f), 0.0f));
     layout.add (std::make_unique<Bool> ("bypass", "Bypass", false));
+
     return layout;
 }
 
 IntelligenceAudioProcessor::IntelligenceAudioProcessor()
     : AudioProcessor (BusesProperties()
           .withInput ("Vocal", juce::AudioChannelSet::stereo(), true)
-          .withInput ("Beat Sidechain", juce::AudioChannelSet::stereo(), false)
           .withOutput ("Vocal Output", juce::AudioChannelSet::stereo(), true)),
       parameters (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
@@ -36,8 +31,9 @@ void IntelligenceAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate.store (sampleRate > 1000.0 ? sampleRate : 44100.0, std::memory_order_relaxed);
     vocalAnalyzer.reset();
-    beatAnalyzer.reset();
     maskingProcessor.prepare (sampleRate);
+    inputPeakSmooth.fill (0.0f);
+    outputPeakSmooth.fill (0.0f);
 }
 
 void IntelligenceAudioProcessor::releaseResources() {}
@@ -46,92 +42,110 @@ bool IntelligenceAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 {
     const auto mainInput = layouts.getMainInputChannelSet();
     const auto mainOutput = layouts.getMainOutputChannelSet();
-    if (mainInput != mainOutput) return false;
-    if (mainInput != juce::AudioChannelSet::mono() && mainInput != juce::AudioChannelSet::stereo()) return false;
-    if (layouts.inputBuses.size() > 1)
-    {
-        const auto sidechain = layouts.getChannelSet (true, 1);
-        if (sidechain != juce::AudioChannelSet::disabled()
-            && sidechain != juce::AudioChannelSet::mono()
-            && sidechain != juce::AudioChannelSet::stereo()) return false;
-    }
-    return true;
+    if (mainInput != mainOutput)
+        return false;
+
+    return mainInput == juce::AudioChannelSet::mono()
+        || mainInput == juce::AudioChannelSet::stereo();
 }
 
 std::array<float, IntelligentMaskingProcessor::bandCount>
-IntelligenceAudioProcessor::getBandLevels (const SpectralAnalyzer& analyzer) const noexcept
+IntelligenceAudioProcessor::getVocalBandLevels() const noexcept
 {
     std::array<float, IntelligentMaskingProcessor::bandCount> levels {};
-    const auto binHz = static_cast<float> (currentSampleRate.load (std::memory_order_relaxed)) / static_cast<float> (SpectralAnalyzer::fftSize);
-    for (size_t band = 0; band < levels.size(); ++band)
+    const auto sampleRate = static_cast<float> (currentSampleRate.load (std::memory_order_relaxed));
+    const auto binHz = sampleRate / static_cast<float> (SpectralAnalyzer::fftSize);
+    const auto& centres = IntelligentMaskingProcessor::centres;
+
+    for (int band = 0; band < IntelligentMaskingProcessor::bandCount; ++band)
     {
-        const auto centreBin = juce::roundToInt (bandCentres[band] / binHz);
-        const auto radius = juce::jmax (2, centreBin / 5);
-        float peak = 0.0f;
-        for (int bin = juce::jmax (1, centreBin - radius);
-             bin <= juce::jmin (SpectralAnalyzer::spectrumSize - 1, centreBin + radius); ++bin)
-            peak = juce::jmax (peak, analyzer.getMagnitude (bin));
-        levels[band] = peak;
+        const float centre = centres[static_cast<size_t> (band)];
+        const float lower = band == 0
+            ? centre / std::sqrt (centres[1] / centre)
+            : std::sqrt (centres[static_cast<size_t> (band - 1)] * centre);
+        const float upper = band == IntelligentMaskingProcessor::bandCount - 1
+            ? centre * std::sqrt (centre / centres[static_cast<size_t> (band - 1)])
+            : std::sqrt (centre * centres[static_cast<size_t> (band + 1)]);
+
+        const int firstBin = juce::jlimit (1, SpectralAnalyzer::spectrumSize - 1,
+                                           juce::roundToInt (lower / binHz));
+        const int lastBin = juce::jlimit (firstBin, SpectralAnalyzer::spectrumSize - 1,
+                                          juce::roundToInt (upper / binHz));
+
+        float power = 0.0f;
+        int count = 0;
+        for (int bin = firstBin; bin <= lastBin; ++bin)
+        {
+            const float magnitude = vocalAnalyzer.getMagnitude (bin);
+            power += magnitude * magnitude;
+            ++count;
+        }
+
+        levels[static_cast<size_t> (band)] = count > 0
+            ? std::sqrt (power / static_cast<float> (count)) : 0.0f;
     }
+
     return levels;
 }
 
 void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+
     auto vocalInput = getBusBuffer (buffer, true, 0);
     auto vocalOutput = getBusBuffer (buffer, false, 0);
     vocalAnalyzer.processBlock (vocalInput);
 
-    bool hasBeat = false;
-    if (auto* sidechainBus = getBus (true, 1); sidechainBus != nullptr && sidechainBus->isEnabled())
-    {
-        auto beatInput = getBusBuffer (buffer, true, 1);
-        beatAnalyzer.processBlock (beatInput);
-        hasBeat = beatInput.getNumChannels() > 0;
-    }
+    const int channels = juce::jmin (vocalInput.getNumChannels(), vocalOutput.getNumChannels());
+    const int samples = juce::jmin (vocalInput.getNumSamples(), vocalOutput.getNumSamples());
 
-    const auto channels = juce::jmin (vocalInput.getNumChannels(), vocalOutput.getNumChannels());
-    const auto samples = juce::jmin (vocalInput.getNumSamples(), vocalOutput.getNumSamples());
     for (int channel = 0; channel < channels; ++channel)
+    {
         if (vocalInput.getReadPointer (channel) != vocalOutput.getWritePointer (channel))
             vocalOutput.copyFrom (channel, 0, vocalInput, channel, 0, samples);
+    }
     for (int channel = channels; channel < vocalOutput.getNumChannels(); ++channel)
         vocalOutput.clear (channel, 0, samples);
 
     const bool bypassed = parameters.getRawParameterValue ("bypass")->load() > 0.5f;
-    maskingProcessor.setEnabled (hasBeat && ! bypassed
-        && parameters.getRawParameterValue ("enabled")->load() > 0.5f);
-    maskingProcessor.setDepth (parameters.getRawParameterValue ("depth")->load());
-    maskingProcessor.setTame (parameters.getRawParameterValue ("tame")->load());
+    const bool intelligenceOn = parameters.getRawParameterValue ("enabled")->load() > 0.5f;
+
+    maskingProcessor.setEnabled (intelligenceOn);
     maskingProcessor.setRecover (parameters.getRawParameterValue ("recover")->load());
+    maskingProcessor.setTame (parameters.getRawParameterValue ("tame")->load());
     maskingProcessor.setBias (parameters.getRawParameterValue ("bias")->load());
     maskingProcessor.setBrighten (parameters.getRawParameterValue ("brighten")->load());
+    maskingProcessor.setBoost (parameters.getRawParameterValue ("boost")->load());
 
-    if (hasBeat && ! bypassed)
-        maskingProcessor.process (vocalOutput, getBandLevels (vocalAnalyzer), getBandLevels (beatAnalyzer));
+    // The main vocal input is the only analysis source. There is no beat bus
+    // and no sidechain dependency in this processor.
+    if (! bypassed)
+        maskingProcessor.process (vocalOutput, getVocalBandLevels());
 
-    // True bypass: leave the vocal path bit-transparent, including output/boost gain.
-    const auto outputGain = bypassed ? 1.0f : juce::Decibels::decibelsToGain (
-        parameters.getRawParameterValue ("output")->load()
-        + parameters.getRawParameterValue ("boost")->load());
+    const float outputGain = bypassed ? 1.0f : juce::Decibels::decibelsToGain (
+        parameters.getRawParameterValue ("output")->load());
+
     for (int channel = 0; channel < channels; ++channel)
     {
         auto* data = vocalOutput.getWritePointer (channel);
-        float inPeak = 0.0f, outPeak = 0.0f;
         const auto* input = vocalInput.getReadPointer (channel);
+        float inPeak = 0.0f;
+        float outPeak = 0.0f;
+
         for (int sample = 0; sample < samples; ++sample)
         {
             inPeak = juce::jmax (inPeak, std::abs (input[sample]));
             data[sample] *= outputGain;
             outPeak = juce::jmax (outPeak, std::abs (data[sample]));
         }
-        const auto inSmooth = 0.25f * inPeak + 0.75f * inputPeakSmooth[static_cast<size_t> (channel)];
-        const auto outSmooth = 0.25f * outPeak + 0.75f * outputPeakSmooth[static_cast<size_t> (channel)];
-        inputPeakSmooth[static_cast<size_t> (channel)] = inSmooth;
-        outputPeakSmooth[static_cast<size_t> (channel)] = outSmooth;
-        inputPeak[static_cast<size_t> (channel)].store (inSmooth, std::memory_order_relaxed);
-        outputPeak[static_cast<size_t> (channel)].store (outSmooth, std::memory_order_relaxed);
+
+        const auto index = static_cast<size_t> (channel);
+        const float inSmooth = 0.25f * inPeak + 0.75f * inputPeakSmooth[index];
+        const float outSmooth = 0.25f * outPeak + 0.75f * outputPeakSmooth[index];
+        inputPeakSmooth[index] = inSmooth;
+        outputPeakSmooth[index] = outSmooth;
+        inputPeak[index].store (inSmooth, std::memory_order_relaxed);
+        outputPeak[index].store (outSmooth, std::memory_order_relaxed);
     }
 }
 
