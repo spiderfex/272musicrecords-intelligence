@@ -4,7 +4,7 @@
 IntelligenceAudioProcessor::IntelligenceAudioProcessor()
     : AudioProcessor (BusesProperties()
           .withInput ("Vocal", juce::AudioChannelSet::stereo(), true)
-          .withInput ("Beat Sidechain", juce::AudioChannelSet::stereo(), true)
+          .withInput ("Beat Sidechain", juce::AudioChannelSet::stereo(), false)
           .withOutput ("Vocal Output", juce::AudioChannelSet::stereo(), true))
 {
 }
