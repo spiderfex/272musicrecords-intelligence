@@ -104,13 +104,15 @@ public:
                 const float tameClass = prominence - biasDb;
 
                 const float recoverNeed = juce::jlimit (0.0f, 1.0f,
-                    (recoverClass - 1.25f) / 7.0f);
+                    (recoverClass - 2.5f) / 8.0f);
                 const float tameNeed = juce::jlimit (0.0f, 1.0f,
-                    (tameClass - 1.25f) / 7.0f);
+                    (tameClass - 2.0f) / 6.0f);
 
-                // The two primary controls can both create positive and negative
-                // corrections across the spectrum; their ranges follow 0–200%.
-                const float recoverDb = recoverNeed * (recover / 100.0f) * 4.0f;
+                // Recovery is deliberately conservative: filling spectral dips
+                // can amplify breath, room noise and microphone self-noise.
+                // Tame is stronger because dominant narrow regions are the
+                // primary harshness/resonance problem this processor targets.
+                const float recoverDb = recoverNeed * (recover / 100.0f) * 1.5f;
                 const float tameDb = tameNeed * (tame / 100.0f) * 4.0f;
                 targetDb[static_cast<size_t> (band)] = recoverDb - tameDb;
             }
@@ -124,7 +126,7 @@ public:
                     const float octavesFrom1k = std::log2 (centres[static_cast<size_t> (band)] / 1000.0f);
                     const float frequencyPosition = juce::jlimit (-1.0f, 1.0f, octavesFrom1k / 4.0f);
                     targetDb[static_cast<size_t> (band)] +=
-                        (brighten / 100.0f) * frequencyPosition * 1.2f;
+                        (brighten / 100.0f) * frequencyPosition * 0.6f;
                 }
             }
 
@@ -155,7 +157,7 @@ public:
             {
                 const float meanGain = weightedGain / weightTotal;
                 for (auto& gain : targetDb)
-                    gain = juce::jlimit (-8.0f, 8.0f, gain - meanGain);
+                    gain = juce::jlimit (-4.0f, 1.5f, gain - meanGain);
             }
         }
 
