@@ -19,13 +19,14 @@ The product is intended to identify frequency-domain competition between a lead 
 - Visual explanation of proposed and active changes.
 
 ## Project status
-**Phase: product and technical specification.** No compiled plugin or working DSP implementation is claimed yet.
+**Phase: VST3 foundation in progress.** A JUCE/CMake project shell and macOS build workflow have been added on a feature branch. No successful build, Cubase sidechain validation, compiled plugin binary or working DSP implementation is claimed yet.
 
 ## Documents
 - [Product specification](docs/PRODUCT_SPEC.md)
 - [Technical architecture](docs/TECHNICAL_ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Decision log](docs/DECISIONS.md)
+- [Third-party licensing notes](docs/LICENSING.md)
 
 ## Technology
 JUCE and modern C++ are leading candidates. A reproducible build pipeline must be established before a plugin binary can be promised. Remote builds can reduce local setup, but the plugin still needs installation and testing on the target Mac and DAW.
