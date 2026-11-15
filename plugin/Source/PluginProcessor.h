@@ -35,19 +35,18 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     float getVocalMagnitude (int bin) const noexcept { return vocalAnalyzer.getMagnitude (bin); }
-    float getBeatMagnitude (int bin) const noexcept { return beatAnalyzer.getMagnitude (bin); }
-    float getReductionDb (int band) const noexcept { return maskingProcessor.getReductionDb (band); }
+    float getCorrectionDb (int band) const noexcept { return maskingProcessor.getGainDb (band); }
     float getInputPeak (int channel) const noexcept { return inputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
     float getOutputPeak (int channel) const noexcept { return outputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
     double getAnalysisSampleRate() const noexcept { return currentSampleRate.load (std::memory_order_relaxed); }
+
     juce::AudioProcessorValueTreeState parameters;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
-    std::array<float, IntelligentMaskingProcessor::bandCount> getBandLevels (const SpectralAnalyzer& analyzer) const noexcept;
+    std::array<float, IntelligentMaskingProcessor::bandCount> getVocalBandLevels() const noexcept;
 
     SpectralAnalyzer vocalAnalyzer;
-    SpectralAnalyzer beatAnalyzer;
     IntelligentMaskingProcessor maskingProcessor;
     std::atomic<double> currentSampleRate { 44100.0 };
     std::array<std::atomic<float>, 2> inputPeak {}, outputPeak {};
