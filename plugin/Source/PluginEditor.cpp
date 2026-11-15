@@ -110,7 +110,7 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRoundedRectangle ((float) sideX + 42, 164.0f, 28.0f, graph.getHeight() - 92.0f, 5.0f);
     g.setColour (green);
     g.fillRoundedRectangle ((float) sideX + 46, 250.0f, 20.0f, juce::jmax (12.0f, graph.getHeight() - 180.0f), 3.0f);
-    label (g, "dB", { sideX + 12, graph.getBottom() - 30.0f, 88, 16 }, 9, muted, false, juce::Justification::centred);
+    label (g, "dB", { sideX + 12, juce::roundToInt (graph.getBottom() - 30.0f), 88, 16 }, 9, muted, false, juce::Justification::centred);
 
     const int bottomY = h - 96;
     g.setColour (panel);
@@ -120,9 +120,9 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     for (int row = 0; row < 2; ++row)
     {
         g.setColour (juce::Colour (11, 24, 30));
-        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + row * 27.0f, (float) w - 235.0f, 7.0f, 3.0f);
+        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + (float) row * 27.0f, (float) w - 235.0f, 7.0f, 3.0f);
         g.setColour (green);
-        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + row * 27.0f, (float) (w - 235) * 0.62f, 7.0f, 3.0f);
+        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + (float) row * 27.0f, (float) (w - 235) * 0.62f, 7.0f, 3.0f);
     }
     label (g, "272 MUSIC RECORDS  ·  SIDECHAIN IS ANALYSIS ONLY", { 30, h - 23, w - 60, 14 }, 8, muted, true);
 }
@@ -132,11 +132,11 @@ void IntelligenceAudioProcessorEditor::resized()
     const int topY = 27;
     intelligenceButton.setBounds (getWidth() - 190, topY, 160, 30);
     const int startX = 330, gap = 18, cellW = (getWidth() - startX - 220) / 3;
-    auto place = [topY, cellW, gap, startX] (juce::Label& l, juce::Slider& s, int index)
+    auto place = [cellW] (juce::Label& l, juce::Slider& s, int index)
     {
-        const int x = startX + index * (cellW + gap);
-        l.setBounds (x, topY - 3, 78, 22);
-        s.setBounds (x + 78, topY - 4, cellW - 78, 28);
+        const int x = 330 + index * (cellW + 18);
+        l.setBounds (x, 24, 78, 22);
+        s.setBounds (x + 78, 23, cellW - 78, 28);
     };
     place (recoverLabel, recoverSlider, 0);
     place (tameLabel, tameSlider, 1);
