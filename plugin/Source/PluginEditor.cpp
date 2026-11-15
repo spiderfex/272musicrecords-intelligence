@@ -47,9 +47,9 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& graphics)
                        / static_cast<float> (displayBins - 1);
 
         const auto vocalDb = juce::Decibels::gainToDecibels (
-            audioProcessor.getVocalMagnitude (i) + 1.0e-8f, -80.0f);
+            audioProcessor.getVocalMagnitude (i * 4) + 1.0e-8f, -80.0f);
         const auto beatDb = juce::Decibels::gainToDecibels (
-            audioProcessor.getBeatMagnitude (i) + 1.0e-8f, -80.0f);
+            audioProcessor.getBeatMagnitude (i * 4) + 1.0e-8f, -80.0f);
 
         const auto vocalY = graph.getBottom() - 8.0f
                           - juce::jlimit (0.0f, 1.0f, (vocalDb + 80.0f) / 80.0f)
