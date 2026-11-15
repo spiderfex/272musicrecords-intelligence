@@ -16,13 +16,14 @@ Status labels: **Planned**, **In progress**, **Validated**, **Blocked**.
 **Exit criteria:** reviewed technical specification and a reproducible empty plugin project.
 
 ## Phase 1 — V0.1: audio analysis
-**Status: In progress**
+**Status: In progress — build and host validation pending**
 
 - [x] Create minimal VST3 plugin shell (pass-through foundation; build validation pending).
-- [ ] Receive vocal main input and beat sidechain.
-- [ ] Implement independent spectral analysis.
-- [ ] Display stable analysis data.
-- [ ] Handle missing sidechain and mono/stereo layouts.
+- [x] Declare vocal main input and optional beat sidechain bus in the processor.
+- [x] Implement independent 2048-point FFT analysis for up to two channels per bus.
+- [x] Add live vocal/beat spectrum display using atomic snapshots.
+- [x] Allow an optional disabled sidechain and mono/stereo main layouts in the declared processor configuration.
+- [ ] Validate missing-sidechain behaviour and mono/stereo routing in Cubase.
 
 **Exit criteria:** analysis is stable, measurable and does not disrupt audio.
 
