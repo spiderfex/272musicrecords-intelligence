@@ -36,6 +36,7 @@ public:
 
     float getVocalMagnitude (int bin) const noexcept { return vocalAnalyzer.getMagnitude (bin); }
     float getCorrectionDb (int band) const noexcept { return maskingProcessor.getResponseDb (band); }
+    float getTotalResponseDb (float frequencyHz) const noexcept { return maskingProcessor.getTotalResponseDb (frequencyHz); }
     float getInputPeak (int channel) const noexcept { return inputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
     float getOutputPeak (int channel) const noexcept { return outputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
     double getAnalysisSampleRate() const noexcept { return currentSampleRate.load (std::memory_order_relaxed); }
