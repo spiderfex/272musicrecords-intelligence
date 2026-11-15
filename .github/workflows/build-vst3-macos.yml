@@ -2,7 +2,7 @@ name: Build VST3 (macOS)
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main]
     paths:
       - "plugin/**"
       - ".github/workflows/build-vst3-macos.yml"
