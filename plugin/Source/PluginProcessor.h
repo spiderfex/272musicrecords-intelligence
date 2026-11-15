@@ -32,6 +32,9 @@ public:
     void getStateInformation (juce::MemoryBlock& destinationData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    float getVocalMagnitude (int bin) const noexcept { return vocalAnalyzer.getMagnitude (bin); }
+    float getBeatMagnitude (int bin) const noexcept { return beatAnalyzer.getMagnitude (bin); }
+
 private:
     SpectralAnalyzer vocalAnalyzer;
     SpectralAnalyzer beatAnalyzer;
