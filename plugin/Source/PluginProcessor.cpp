@@ -100,14 +100,15 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (int channel = channels; channel < vocalOutput.getNumChannels(); ++channel)
         vocalOutput.clear (channel, 0, samples);
 
-    maskingProcessor.setEnabled (hasBeat && parameters.getRawParameterValue ("enabled")->load() > 0.5f);
+    const bool bypassed = parameters.getRawParameterValue ("bypass")->load() > 0.5f;
+    maskingProcessor.setEnabled (hasBeat && ! bypassed
+        && parameters.getRawParameterValue ("enabled")->load() > 0.5f);
     maskingProcessor.setDepth (parameters.getRawParameterValue ("depth")->load());
     maskingProcessor.setTame (parameters.getRawParameterValue ("tame")->load());
     maskingProcessor.setRecover (parameters.getRawParameterValue ("recover")->load());
     maskingProcessor.setBias (parameters.getRawParameterValue ("bias")->load());
     maskingProcessor.setBrighten (parameters.getRawParameterValue ("brighten")->load());
 
-    const bool bypassed = parameters.getRawParameterValue ("bypass")->load() > 0.5f;
     if (hasBeat && ! bypassed)
         maskingProcessor.process (vocalOutput, getBandLevels (vocalAnalyzer), getBandLevels (beatAnalyzer));
 
