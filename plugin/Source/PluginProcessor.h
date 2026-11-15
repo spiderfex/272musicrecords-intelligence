@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "SpectralAnalyzer.h"
 #include "IntelligentMaskingProcessor.h"
+#include <atomic>
 
 class IntelligenceAudioProcessor final : public juce::AudioProcessor
 {
