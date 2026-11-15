@@ -102,7 +102,6 @@ public:
                 // negative Bias gives Tame more classification space.
                 const float biasDb = bias * 0.045f;
                 const float recoverClass = -prominence + biasDb;
-                const float tameClass = prominence - biasDb;
 
                 const float recoverNeed = juce::jlimit (0.0f, 1.0f,
                     (recoverClass - 4.5f) / 9.0f);
