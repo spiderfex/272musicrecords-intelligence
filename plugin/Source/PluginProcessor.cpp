@@ -16,6 +16,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout IntelligenceAudioProcessor::
     layout.add (std::make_unique<Float> ("depth", "Depth", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f));
     layout.add (std::make_unique<Float> ("tame", "Tame", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.7f));
     layout.add (std::make_unique<Float> ("recover", "Recover", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.25f));
+    layout.add (std::make_unique<Float> ("bias", "Bias", juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> ("brighten", "Brighten", juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> ("boost", "Boost", juce::NormalisableRange<float> (-6.0f, 6.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Float> ("output", "Output Gain", juce::NormalisableRange<float> (-24.0f, 12.0f, 0.01f), 0.0f));
+    layout.add (std::make_unique<Bool> ("bypass", "Bypass", false));
     return layout;
 }
 
@@ -99,9 +104,34 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     maskingProcessor.setDepth (parameters.getRawParameterValue ("depth")->load());
     maskingProcessor.setTame (parameters.getRawParameterValue ("tame")->load());
     maskingProcessor.setRecover (parameters.getRawParameterValue ("recover")->load());
+    maskingProcessor.setBias (parameters.getRawParameterValue ("bias")->load());
+    maskingProcessor.setBrighten (parameters.getRawParameterValue ("brighten")->load());
 
-    if (hasBeat)
+    const bool bypassed = parameters.getRawParameterValue ("bypass")->load() > 0.5f;
+    if (hasBeat && ! bypassed)
         maskingProcessor.process (vocalOutput, getBandLevels (vocalAnalyzer), getBandLevels (beatAnalyzer));
+
+    const auto outputGain = juce::Decibels:: decibelsToGain (
+        parameters.getRawParameterValue ("output")->load()
+        + parameters.getRawParameterValue ("boost")->load());
+    for (int channel = 0; channel < channels; ++channel)
+    {
+        auto* data = vocalOutput.getWritePointer (channel);
+        float inPeak = 0.0f, outPeak = 0.0f;
+        const auto* input = vocalInput.getReadPointer (channel);
+        for (int sample = 0; sample < samples; ++sample)
+        {
+            inPeak = juce::jmax (inPeak, std::abs (input[sample]));
+            data[sample] *= outputGain;
+            outPeak = juce::jmax (outPeak, std::abs (data[sample]));
+        }
+        const auto inSmooth = 0.25f * inPeak + 0.75f * inputPeakSmooth[static_cast<size_t> (channel)];
+        const auto outSmooth = 0.25f * outPeak + 0.75f * outputPeakSmooth[static_cast<size_t> (channel)];
+        inputPeakSmooth[static_cast<size_t> (channel)] = inSmooth;
+        outputPeakSmooth[static_cast<size_t> (channel)] = outSmooth;
+        inputPeak[static_cast<size_t> (channel)].store (inSmooth, std::memory_order_relaxed);
+        outputPeak[static_cast<size_t> (channel)].store (outSmooth, std::memory_order_relaxed);
+    }
 }
 
 juce::AudioProcessorEditor* IntelligenceAudioProcessor::createEditor()
