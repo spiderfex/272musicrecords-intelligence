@@ -25,7 +25,18 @@ public:
     void setDepth (float value) noexcept { depth = juce::jlimit (0.0f, 1.0f, value); }
     void setTame (float value) noexcept { tame = juce::jlimit (0.0f, 1.0f, value); }
     void setRecover (float value) noexcept { recover = juce::jlimit (0.0f, 1.0f, value); }
-    void setEnabled (bool value) noexcept { enabled = value; }
+    void setEnabled (bool value) noexcept
+    {
+        enabled = value;
+        if (! enabled)
+        {
+            for (size_t band = 0; band < smoothedDb.size(); ++band)
+            {
+                smoothedDb[band] = 0.0f;
+                displayedReductionDb[band].store (0.0f, std::memory_order_relaxed);
+            }
+        }
+    }
 
     void process (juce::AudioBuffer<float>& vocal, const std::array<float, 6>& vocalBands,
                   const std::array<float, 6>& beatBands) noexcept
@@ -40,7 +51,7 @@ public:
             const auto ratioDb = juce::Decibels::gainToDecibels (b / v, -36.0f);
             const auto overlap = juce::jlimit (0.0f, 1.0f, (ratioDb + 18.0f) / 24.0f);
             const auto vocalPresence = juce::jlimit (0.0f, 1.0f,
-                (juce::Decibels::gainToDecibels (v, -72.0f) + 54.0f) / 36.0f);
+                (juce::Decibels::gainToDecibels (v, -90.0f) + 60.0f) / 36.0f);
             const auto tameCut = overlap * vocalPresence * tame * depth * 4.5f;
             const auto recoverLift = (1.0f - overlap) * vocalPresence * recover * depth * 1.2f;
             targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 1.2f, recoverLift - tameCut);
