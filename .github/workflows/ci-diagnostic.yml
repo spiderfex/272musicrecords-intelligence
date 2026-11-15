@@ -1,0 +1,20 @@
+name: CI Runner Diagnostic
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+    paths:
+      - ".github/workflows/ci-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm GitHub-hosted runner starts
+        run: |
+          echo "Runner started successfully"
+          uname -a
+          cmake --version
