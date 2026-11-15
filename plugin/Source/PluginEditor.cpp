@@ -89,10 +89,6 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRoundedRectangle (graph, 8.0f);
     label (g, "SPECTRAL INTELLIGENCE", { 40, 121, 260, 22 }, 11, white, true);
     label (g, "DYNAMIC EQ RESPONSE", { 40, 147, 260, 16 }, 9, cyan, true);
-    label (g, "+12 dB", { 25, 174, 42, 14 }, 8, muted);
-    label (g, "0 dB", { 25, 0, 42, 14 }, 8, muted);
-    label (g, "-12 dB", { 25, 0, 42, 14 }, 8, muted);
-
     auto plot = graph.withTrimmedTop (54).reduced (14, 20);
     constexpr float minDb = -12.0f;
     constexpr float maxDb = 12.0f;
