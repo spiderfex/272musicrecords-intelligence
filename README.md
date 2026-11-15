@@ -19,7 +19,7 @@ The product is intended to identify frequency-domain competition between a lead 
 - Visual explanation of proposed and active changes.
 
 ## Project status
-**Phase: VST3 foundation in progress.** A JUCE/CMake project shell, independent vocal/beat FFT analysis and live spectrum display are now on a feature branch. The audio remains unchanged. GitHub Actions attempts are currently being cancelled before build steps start, so no successful build, Cubase sidechain validation or compiled plugin binary is claimed yet.
+**Phase: VST3 foundation in progress.** A JUCE/CMake project shell, independent vocal/beat FFT analysis and live spectrum display are now on a feature branch. The audio remains unchanged. GitHub Actions jobs currently terminate before any step starts and GitHub reports runner_id=0 with no runner assigned (including a minimal ubuntu-latest diagnostic), so no successful build, Cubase sidechain validation or compiled plugin binary is claimed yet.
 
 ## Documents
 - [Product specification](docs/PRODUCT_SPEC.md)
