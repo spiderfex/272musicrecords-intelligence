@@ -15,6 +15,7 @@ public:
     static constexpr int fftSize = 1 << fftOrder;
     static constexpr int spectrumSize = fftSize / 2 + 1;
     static constexpr int maxChannels = 2;
+    static constexpr int hopSize = 512;
 
     SpectralAnalyzer() : fft (fftOrder)
     {
@@ -30,7 +31,10 @@ public:
             channel.fill (0.0f);
 
         writePosition = 0;
+        samplesSinceAnalysis = 0;
+        hasFullFrame = false;
         activeChannels = 1;
+        smoothedMagnitudes.fill (0.0f);
 
         for (auto& value : magnitudes)
             value.store (0.0f, std::memory_order_relaxed);
@@ -52,12 +56,15 @@ public:
                 ring[static_cast<size_t> (channel)][static_cast<size_t> (writePosition)]
                     = input.getSample (channel, sample);
 
-            ++writePosition;
+            writePosition = (writePosition + 1) % fftSize;
+            ++samplesSinceAnalysis;
 
-            if (writePosition == fftSize)
+            if ((! hasFullFrame && samplesSinceAnalysis >= fftSize)
+                || (hasFullFrame && samplesSinceAnalysis >= hopSize))
             {
                 analyseFrame();
-                writePosition = 0;
+                hasFullFrame = true;
+                samplesSinceAnalysis = 0;
             }
         }
     }
@@ -78,14 +85,16 @@ private:
             auto& channelData = fftData[static_cast<size_t> (channel)];
             const auto& channelRing = ring[static_cast<size_t> (channel)];
 
+            // writePosition points to the oldest sample in the circular buffer.
             for (int i = 0; i < fftSize; ++i)
             {
                 const auto phase = juce::MathConstants<float>::twoPi
                                  * static_cast<float> (i)
                                  / static_cast<float> (fftSize - 1);
                 const auto window = 0.5f - 0.5f * std::cos (phase);
+                const auto ringIndex = (writePosition + i) % fftSize;
                 channelData[static_cast<size_t> (i)]
-                    = channelRing[static_cast<size_t> (i)] * window;
+                    = channelRing[static_cast<size_t> (ringIndex)] * window;
             }
 
             for (int i = fftSize; i < static_cast<int> (channelData.size()); ++i)
@@ -106,8 +115,10 @@ private:
                 peakMagnitude = juce::jmax (peakMagnitude, magnitude);
             }
 
-            magnitudes[static_cast<size_t> (bin)].store (peakMagnitude,
-                                                         std::memory_order_relaxed);
+            auto& smoothed = smoothedMagnitudes[static_cast<size_t> (bin)];
+            const auto coefficient = peakMagnitude > smoothed ? 0.55f : 0.16f;
+            smoothed += coefficient * (peakMagnitude - smoothed);
+            magnitudes[static_cast<size_t> (bin)].store (smoothed, std::memory_order_relaxed);
         }
     }
 
@@ -115,6 +126,9 @@ private:
     std::array<std::array<float, fftSize>, maxChannels> ring {};
     std::array<std::array<float, fftSize * 2>, maxChannels> fftData {};
     std::array<std::atomic<float>, spectrumSize> magnitudes {};
+    std::array<float, spectrumSize> smoothedMagnitudes {};
     int writePosition = 0;
+    int samplesSinceAnalysis = 0;
     int activeChannels = 1;
+    bool hasFullFrame = false;
 };
