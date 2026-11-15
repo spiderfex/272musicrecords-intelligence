@@ -98,6 +98,11 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (int channel = channels; channel < vocalOutput.getNumChannels(); ++channel)
         vocalOutput.clear (channel, 0, samples);
 
+    // TEMPORARY DIAGNOSTIC: prove that the enabled parameter reaches the vocal output.
+    // Remove this fixed attenuation after the signal-path test.
+    if (parameters.getRawParameterValue ("enabled")->load() > 0.5f)
+        vocalOutput.applyGain (juce::Decibels::decibelsToGain (-12.0f));
+
     maskingProcessor.setEnabled (hasBeat && parameters.getRawParameterValue ("enabled")->load() > 0.5f);
     maskingProcessor.setDepth (parameters.getRawParameterValue ("depth")->load());
     maskingProcessor.setTame (parameters.getRawParameterValue ("tame")->load());
