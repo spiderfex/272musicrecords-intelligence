@@ -9,14 +9,16 @@ Status labels: **Planned**, **In progress**, **Validated**, **Blocked**.
 - [x] Choose vocal main input plus beat sidechain topology.
 - [x] Establish real-time DSP constraints.
 - [ ] Confirm exact host and plugin-format requirements.
-- [ ] Select framework/version and establish reproducible build.
+- [x] Select JUCE 9.0.5 as the initial framework version and add a CMake VST3 project skeleton.
+- [ ] Verify a successful macOS CI build and Cubase sidechain routing.
+- [ ] Confirm the appropriate JUCE licence tier before any closed-source commercial distribution.
 
 **Exit criteria:** reviewed technical specification and a reproducible empty plugin project.
 
 ## Phase 1 — V0.1: audio analysis
-**Status: Planned**
+**Status: In progress**
 
-- [ ] Create minimal VST3 plugin shell.
+- [x] Create minimal VST3 plugin shell (pass-through foundation; build validation pending).
 - [ ] Receive vocal main input and beat sidechain.
 - [ ] Implement independent spectral analysis.
 - [ ] Display stable analysis data.
