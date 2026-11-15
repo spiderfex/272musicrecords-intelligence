@@ -181,26 +181,61 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (150, 157, 169).withAlpha (0.78f));
     g.strokePath (spectrum, juce::PathStrokeType (1.25f));
 
-    // Draw the measured magnitude response of the complete active biquad cascade.
-    juce::Path response;
+    // Draw the measured magnitude response. Cuts are red, boosts are cyan.
+    juce::Path cutResponse, boostResponse;
     constexpr int responsePoints = 240;
+    float deepestCutDb = 0.0f;
+    float deepestCutHz = minHz;
+    bool previousWasCut = false;
     for (int i = 0; i < responsePoints; ++i)
     {
         const float norm = static_cast<float> (i) / static_cast<float> (responsePoints - 1);
         const float hz = minHz * std::pow (maxHz / minHz, norm);
         const float gainDb = audioProcessor.getTotalResponseDb (hz);
         const juce::Point<float> point (xForFrequency (hz), yForDb (gainDb));
-        if (i == 0) response.startNewSubPath (point);
-        else response.lineTo (point);
+        if (gainDb < deepestCutDb)
+        {
+            deepestCutDb = gainDb;
+            deepestCutHz = hz;
+        }
+
+        auto& activePath = gainDb < -0.03f ? cutResponse : boostResponse;
+        if (i == 0 || (gainDb < -0.03f) != previousWasCut)
+            activePath.startNewSubPath (point);
+        else
+            activePath.lineTo (point);
+        previousWasCut = gainDb < -0.03f;
     }
-    g.setColour (cyan.withAlpha (0.12f));
-    juce::Path responseFill = response;
-    responseFill.lineTo (plot.getRight(), zeroY);
-    responseFill.lineTo (plot.getX(), zeroY);
-    responseFill.closeSubPath();
-    g.fillPath (responseFill);
-    g.setColour (juce::Colour (255, 190, 70));
-    g.strokePath (response, juce::PathStrokeType (2.0f));
+
+    g.setColour (juce::Colour (255, 65, 78).withAlpha (0.14f));
+    juce::Path cutFill = cutResponse;
+    cutFill.lineTo (plot.getRight(), zeroY);
+    cutFill.lineTo (plot.getX(), zeroY);
+    cutFill.closeSubPath();
+    g.fillPath (cutFill);
+    g.setColour (juce::Colour (255, 65, 78));
+    g.strokePath (cutResponse, juce::PathStrokeType (2.4f));
+    g.setColour (cyan);
+    g.strokePath (boostResponse, juce::PathStrokeType (2.0f));
+
+    if (deepestCutDb < -0.05f)
+    {
+        const auto markerX = xForFrequency (deepestCutHz);
+        const auto markerY = yForDb (deepestCutDb);
+        g.setColour (juce::Colour (255, 65, 78));
+        g.fillEllipse (markerX - 3.5f, markerY - 3.5f, 7.0f, 7.0f);
+        const auto frequencyText = deepestCutHz >= 1000.0f
+            ? juce::String (deepestCutHz / 1000.0f, 2) + " kHz"
+            : juce::String (juce::roundToInt (deepestCutHz)) + " Hz";
+        const auto annotation = juce::String (deepestCutDb, 1) + " dB  ·  " + frequencyText;
+        auto annotationX = juce::jlimit (plot.getX(), plot.getRight() - 142.0f, markerX + 8.0f);
+        auto annotationY = juce::jlimit (plot.getY() + 2.0f, plot.getBottom() - 20.0f, markerY - 22.0f);
+        g.setColour (juce::Colour (35, 18, 25).withAlpha (0.96f));
+        g.fillRoundedRectangle (annotationX, annotationY, 138.0f, 18.0f, 4.0f);
+        label (g, annotation, { juce::roundToInt (annotationX + 4.0f),
+                                juce::roundToInt (annotationY), 130, 18 }, 9,
+               juce::Colour (255, 105, 115), true);
+    }
 
     const int meterX = w - 150;
     g.setColour (panel);
