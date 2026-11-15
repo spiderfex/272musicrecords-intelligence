@@ -63,15 +63,11 @@ IntelligenceAudioProcessor::getBandLevels (const SpectralAnalyzer& analyzer) con
     {
         const auto centreBin = juce::roundToInt (bandCentres[band] / binHz);
         const auto radius = juce::jmax (2, centreBin / 5);
-        float sum = 0.0f;
-        int count = 0;
+        float peak = 0.0f;
         for (int bin = juce::jmax (1, centreBin - radius);
              bin <= juce::jmin (SpectralAnalyzer::spectrumSize - 1, centreBin + radius); ++bin)
-        {
-            sum += analyzer.getMagnitude (bin);
-            ++count;
-        }
-        levels[band] = count > 0 ? sum / static_cast<float> (count) : 0.0f;
+            peak = juce::jmax (peak, analyzer.getMagnitude (bin));
+        levels[band] = peak;
     }
     return levels;
 }
