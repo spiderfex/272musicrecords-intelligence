@@ -103,8 +103,8 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
                                          static_cast<float> (h) - 284.0f);
     g.setColour (panel);
     g.fillRoundedRectangle (graph, 8.0f);
-    label (g, "SPECTRAL INTELLIGENCE", { 40, 121, 260, 22 }, 11, white, true);
-    label (g, "DYNAMIC EQ RESPONSE", { 40, 147, 260, 16 }, 9, cyan, true);
+    label (g, "VOCAL SPECTRUM  ·  PRE", { 40, 121, 260, 22 }, 11, white, true);
+    label (g, "TOTAL EQ RESPONSE", { 40, 147, 260, 16 }, 9, cyan, true);
 
     auto plot = graph.withTrimmedTop (54).reduced (14, 20);
     constexpr float minDb = -12.0f;
@@ -157,51 +157,49 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
                    8, muted, false, juce::Justification::centredRight);
     }
 
-    // Plot the applied EQ gains from the same values used to update the filters.
+    // Real-time pre-processing vocal spectrum from the FFT analyzer.
+    juce::Path spectrum;
+    constexpr int spectrumPoints = 220;
+    for (int i = 0; i < spectrumPoints; ++i)
+    {
+        const float norm = static_cast<float> (i) / static_cast<float> (spectrumPoints - 1);
+        const float hz = minHz * std::pow (maxHz / minHz, norm);
+        const int bin = juce::jlimit (1, SpectralAnalyzer::spectrumSize - 1,
+                                      juce::roundToInt (hz * static_cast<float> (SpectralAnalyzer::fftSize)
+                                                        / static_cast<float> (sampleRate)));
+        // Hann-window coherent-gain compensation for an approximate dBFS display.
+        const float magnitude = audioProcessor.getVocalMagnitude (bin) * 4.0f;
+        const float db = juce::jlimit (-90.0f, 0.0f,
+            juce::Decibels::gainToDecibels (magnitude, -90.0f));
+        const float spectrumY = plot.getBottom()
+            - ((db + 90.0f) / 90.0f) * plot.getHeight();
+        const juce::Point<float> point (xForFrequency (hz), spectrumY);
+        if (i == 0) spectrum.startNewSubPath (point);
+        else spectrum.lineTo (point);
+    }
+    g.setColour (juce::Colour (150, 157, 169).withAlpha (0.78f));
+    g.strokePath (spectrum, juce::PathStrokeType (1.25f));
+
+    // Draw the measured magnitude response of the complete active biquad cascade.
     juce::Path response;
-    juce::Path fill;
-    const float zeroY = yForDb (0.0f);
-    const auto& centres = IntelligentMaskingProcessor::centres;
-    std::array<juce::Point<float>, IntelligentMaskingProcessor::bandCount> points {};
-
-    for (int band = 0; band < IntelligentMaskingProcessor::bandCount; ++band)
+    constexpr int responsePoints = 240;
+    for (int i = 0; i < responsePoints; ++i)
     {
-        const float hz = centres[static_cast<size_t> (band)];
-        const float gainDb = audioProcessor.getCorrectionDb (band);
-        points[static_cast<size_t> (band)] = { xForFrequency (hz), yForDb (gainDb) };
+        const float norm = static_cast<float> (i) / static_cast<float> (responsePoints - 1);
+        const float hz = minHz * std::pow (maxHz / minHz, norm);
+        const float gainDb = audioProcessor.getTotalResponseDb (hz);
+        const juce::Point<float> point (xForFrequency (hz), yForDb (gainDb));
+        if (i == 0) response.startNewSubPath (point);
+        else response.lineTo (point);
     }
-
-    response.startNewSubPath (plot.getX(), zeroY);
-    response.lineTo (points.front().x, points.front().y);
-    for (int band = 1; band < IntelligentMaskingProcessor::bandCount; ++band)
-    {
-        const auto previous = points[static_cast<size_t> (band - 1)];
-        const auto current = points[static_cast<size_t> (band)];
-        const float midX = (previous.x + current.x) * 0.5f;
-        response.cubicTo (midX, previous.y, midX, current.y, current.x, current.y);
-    }
-    response.lineTo (plot.getRight(), zeroY);
-    fill = response;
-    fill.closeSubPath();
-
-    g.setColour (cyan.withAlpha (0.10f));
-    g.fillPath (fill);
-
-    juce::Path curve;
-    curve.startNewSubPath (points.front());
-    for (int band = 1; band < IntelligentMaskingProcessor::bandCount; ++band)
-    {
-        const auto previous = points[static_cast<size_t> (band - 1)];
-        const auto current = points[static_cast<size_t> (band)];
-        const float midX = (previous.x + current.x) * 0.5f;
-        curve.cubicTo (midX, previous.y, midX, current.y, current.x, current.y);
-    }
-
-    g.setColour (white);
-    g.strokePath (curve, juce::PathStrokeType (2.2f));
-    g.setColour (cyan);
-    for (const auto& point : points)
-        g.fillEllipse (point.x - 2.2f, point.y - 2.2f, 4.4f, 4.4f);
+    g.setColour (cyan.withAlpha (0.12f));
+    juce::Path responseFill = response;
+    responseFill.lineTo (plot.getRight(), zeroY);
+    responseFill.lineTo (plot.getX(), zeroY);
+    responseFill.closeSubPath();
+    g.fillPath (responseFill);
+    g.setColour (juce::Colour (255, 190, 70));
+    g.strokePath (response, juce::PathStrokeType (2.0f));
 
     const int meterX = w - 150;
     g.setColour (panel);
