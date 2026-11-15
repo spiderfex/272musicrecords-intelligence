@@ -79,15 +79,25 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     const auto sampleRate = audioProcessor.getAnalysisSampleRate();
     const float minHz = 20.0f;
     const float maxHz = juce::jmin (20000.0f, static_cast<float> (sampleRate * 0.48));
-    float peakDb = -90.0f;
-    for (int bin = 1; bin < SpectralAnalyzer::spectrumSize; ++bin)
+    // Use a robust percentile instead of the single loudest FFT bin.
+    // This prevents DC-adjacent rumble or one narrow peak from flattening the whole plot.
+    std::array<float, SpectralAnalyzer::spectrumSize> visibleLevels {};
+    int visibleCount = 0;
+    const auto firstVisibleBin = juce::jmax (2, juce::roundToInt (40.0f * SpectralAnalyzer::fftSize
+                                                                   / static_cast<float> (sampleRate)));
+    const auto lastVisibleBin = juce::jmin (SpectralAnalyzer::spectrumSize - 1,
+        juce::roundToInt (18000.0f * SpectralAnalyzer::fftSize / static_cast<float> (sampleRate)));
+    for (int bin = firstVisibleBin; bin <= lastVisibleBin; ++bin)
     {
         const auto vocalDb = juce::Decibels::gainToDecibels (audioProcessor.getVocalMagnitude (bin) * 4.0f, -120.0f);
         const auto beatDb = juce::Decibels::gainToDecibels (audioProcessor.getBeatMagnitude (bin) * 4.0f, -120.0f);
-        peakDb = juce::jmax (peakDb, juce::jmax (vocalDb, beatDb));
+        visibleLevels[static_cast<size_t> (visibleCount++)] = juce::jmax (vocalDb, beatDb);
     }
-    const float minDb = juce::jmax (-108.0f, peakDb - 60.0f);
-    const float maxDb = juce::jmax (-6.0f, peakDb + 6.0f);
+    std::sort (visibleLevels.begin(), visibleLevels.begin() + visibleCount);
+    const auto percentileIndex = juce::jmax (0, static_cast<int> (visibleCount * 0.92f) - 1);
+    const float referenceDb = visibleCount > 0 ? visibleLevels[static_cast<size_t> (percentileIndex)] : -72.0f;
+    const float minDb = juce::jmax (-108.0f, referenceDb - 48.0f);
+    const float maxDb = juce::jmax (-6.0f, referenceDb + 12.0f);
     const auto xForFrequency = [&] (float hz)
     {
         const auto norm = std::log (juce::jlimit (minHz, maxHz, hz) / minHz)
