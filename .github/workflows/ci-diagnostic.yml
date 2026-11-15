@@ -2,7 +2,7 @@ name: CI Runner Diagnostic
 
 on:
   push:
-    branches: ["feature/**"]
+    branches: ["main", "feature/**"]
     paths:
       - ".github/workflows/ci-diagnostic.yml"
 
