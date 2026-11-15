@@ -12,6 +12,12 @@ public:
     void timerCallback() override;
 
 private:
+    void styleSlider (juce::Slider& slider, const juce::String& suffix);
     IntelligenceAudioProcessor& audioProcessor;
+    juce::ToggleButton intelligenceButton { "INTELLIGENCE ON" };
+    juce::Slider depthSlider, tameSlider, recoverSlider;
+    juce::Label depthLabel, tameLabel, recoverLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enabledAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> depthAttachment, tameAttachment, recoverAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntelligenceAudioProcessorEditor)
 };
