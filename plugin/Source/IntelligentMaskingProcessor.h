@@ -104,17 +104,17 @@ public:
                 const float recoverClass = -prominence + biasDb;
 
                 const float recoverNeed = juce::jlimit (0.0f, 1.0f,
-                    (recoverClass - 4.5f) / 9.0f);
+                    (recoverClass - 2.0f) / 7.0f);
 
                 // A separate narrow-peak detector is used for Tame. It compares
                 // the strongest FFT bin in this band with its immediate spectral
                 // neighbours, rather than treating every naturally strong vocal
                 // formant as a harsh resonance.
                 const float resonanceNeed = juce::jlimit (0.0f, 1.0f,
-                    (resonanceScores[static_cast<size_t> (band)] - 3.0f) / 6.0f);
+                    (resonanceScores[static_cast<size_t> (band)] - 1.5f) / 4.5f);
 
-                const float recoverDb = recoverNeed * (recover / 100.0f) * 0.5f;
-                const float tameDb = resonanceNeed * (tame / 100.0f) * 2.5f;
+                const float recoverDb = recoverNeed * (recover / 100.0f) * 1.5f;
+                const float tameDb = resonanceNeed * (tame / 100.0f) * 4.0f;
                 targetDb[static_cast<size_t> (band)] = recoverDb - tameDb;
             }
 
@@ -158,7 +158,7 @@ public:
             {
                 const float meanGain = weightedGain / weightTotal;
                 for (auto& gain : targetDb)
-                    gain = juce::jlimit (-2.5f, 0.5f, gain - meanGain);
+                    gain = juce::jlimit (-4.0f, 1.2f, gain - meanGain);
             }
         }
 
@@ -167,7 +167,7 @@ public:
         {
             auto& current = smoothedDb[static_cast<size_t> (band)];
             const float target = targetDb[static_cast<size_t> (band)];
-            const float timeConstant = target > current ? 0.025f : 0.085f;
+            const float timeConstant = target < current ? 0.018f : 0.120f;
             const float smoothing = 1.0f - std::exp (-blockSeconds / timeConstant);
             current += smoothing * (target - current);
 
