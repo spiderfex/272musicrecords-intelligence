@@ -210,15 +210,29 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRoundedRectangle (static_cast<float> (meterX) + 42.0f, 218.0f,
                             28.0f, graph.getHeight() - 92.0f, 5.0f);
 
-    g.setColour (green);
-    const float outputDb = juce::Decibels::gainToDecibels (audioProcessor.getOutputPeak (0), -60.0f);
-    const float outputNorm = juce::jlimit (0.0f, 1.0f, (outputDb + 60.0f) / 60.0f);
-    const float meterHeight = (graph.getHeight() - 92.0f) * outputNorm;
-    g.fillRoundedRectangle (static_cast<float> (meterX) + 46.0f,
-                            graph.getBottom() - 18.0f - meterHeight,
-                            20.0f, juce::jmax (2.0f, meterHeight), 3.0f);
-    label (g, "dB", { meterX + 12, juce::roundToInt (graph.getBottom() - 30.0f), 88, 16 },
-           9, muted, false, juce::Justification::centred);
+    const float meterTop = 218.0f;
+    const float meterBottom = graph.getBottom() - 18.0f;
+    const float meterH = juce::jmax (10.0f, meterBottom - meterTop);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const float x = static_cast<float> (meterX) + 25.0f + static_cast<float> (ch) * 42.0f;
+        const float peak = audioProcessor.getOutputPeak (ch);
+        const float peakDb = juce::Decibels::gainToDecibels (peak, -60.0f);
+        const float norm = juce::jlimit (0.0f, 1.0f, (peakDb + 60.0f) / 60.0f);
+        g.setColour (green);
+        g.fillRoundedRectangle (x, meterBottom - meterH * norm, 16.0f,
+                                juce::jmax (2.0f, meterH * norm), 3.0f);
+        const float holdDb = juce::Decibels::gainToDecibels (audioProcessor.getOutputPeakHold (ch), -60.0f);
+        const float holdY = meterBottom - meterH * juce::jlimit (0.0f, 1.0f, (holdDb + 60.0f) / 60.0f);
+        g.setColour (juce::Colour (255, 190, 70));
+        g.drawHorizontalLine (juce::roundToInt (holdY), x - 2.0f, x + 18.0f);
+        label (g, ch == 0 ? "L" : "R", { juce::roundToInt (x - 2), 196, 20, 14 }, 8, muted, true,
+               juce::Justification::centred);
+        label (g, juce::String (peakDb, 1), { juce::roundToInt (x - 10), juce::roundToInt (meterBottom + 2), 38, 14 },
+               8, white, false, juce::Justification::centred);
+    }
+    label (g, "dBFS", { meterX + 12, juce::roundToInt (graph.getBottom() - 12.0f), 88, 14 },
+           8, muted, false, juce::Justification::centred);
 
     const int bottomY = h - 96;
     g.setColour (panel);
