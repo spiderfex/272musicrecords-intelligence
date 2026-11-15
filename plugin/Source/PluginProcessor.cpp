@@ -146,6 +146,14 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         outputPeakSmooth[index] = outSmooth;
         inputPeak[index].store (inSmooth, std::memory_order_relaxed);
         outputPeak[index].store (outSmooth, std::memory_order_relaxed);
+        auto updateHold = [] (std::atomic<float>& hold, float value)
+        {
+            float previous = hold.load (std::memory_order_relaxed);
+            while (value > previous && ! hold.compare_exchange_weak (previous, value,
+                       std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        };
+        updateHold (inputPeakHold[index], inPeak);
+        updateHold (outputPeakHold[index], outPeak);
     }
 }
 
