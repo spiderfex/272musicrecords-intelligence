@@ -72,35 +72,86 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     label (g, "SPECTRAL INTELLIGENCE", { 40, 121, 260, 22 }, 11, white, true);
     label (g, "VOCAL", { 40, 147, 60, 16 }, 9, cyan, true);
     label (g, "BEAT SIDECHAIN", { 104, 147, 120, 16 }, 9, orange, true);
+    label (g, "DYNAMIC EQ", { 235, 147, 100, 16 }, 9, green, true);
+    label (g, "dB", { 28, 174, 24, 14 }, 8, muted, false);
 
-    auto plot = graph.withTrimmedTop (54).reduced (14, 10);
-    for (int i = 0; i <= 8; ++i)
+    auto plot = graph.withTrimmedTop (54).reduced (14, 20);
+    const auto sampleRate = audioProcessor.getAnalysisSampleRate();
+    const float minHz = 20.0f;
+    const float maxHz = juce::jmin (20000.0f, static_cast<float> (sampleRate * 0.48));
+    const float minDb = -90.0f, maxDb = 6.0f;
+    const auto xForFrequency = [&] (float hz)
     {
-        const float x = plot.getX() + plot.getWidth() * (float) i / 8.0f;
+        const auto norm = std::log (juce::jlimit (minHz, maxHz, hz) / minHz)
+                        / std::log (maxHz / minHz);
+        return plot.getX() + norm * plot.getWidth();
+    };
+    const auto yForDb = [&] (float db)
+    {
+        const auto norm = (juce::jlimit (minDb, maxDb, db) - minDb) / (maxDb - minDb);
+        return plot.getBottom() - norm * plot.getHeight();
+    };
+
+    const std::array<float, 10> frequencyTicks { 20.0f, 50.0f, 100.0f, 200.0f, 500.0f,
+                                                 1000.0f, 2000.0f, 5000.0f, 10000.0f, 20000.0f };
+    for (const auto hz : frequencyTicks)
+    {
+        if (hz > maxHz) continue;
+        const auto x = xForFrequency (hz);
         g.setColour (grid.withAlpha (0.75f));
         g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
+        const auto tickText = hz >= 1000.0f
+            ? juce::String (hz / 1000.0f, hz >= 10000.0f ? 0 : 1) + "k"
+            : juce::String (juce::roundToInt (hz));
+        label (g, tickText, { juce::roundToInt (x) - 20, juce::roundToInt (plot.getBottom()) + 3, 40, 14 },
+               8, muted, false, juce::Justification::centred);
     }
-    for (int i = 0; i <= 8; ++i)
+    for (int db = -90; db <= 0; db += 18)
     {
-        const float y = plot.getY() + plot.getHeight() * (float) i / 8.0f;
+        const auto y = yForDb (static_cast<float> (db));
         g.setColour (grid.withAlpha (0.65f));
         g.drawHorizontalLine (juce::roundToInt (y), plot.getX(), plot.getRight());
+        label (g, juce::String (db), { juce::roundToInt (plot.getX()) - 34, juce::roundToInt (y) - 7, 28, 14 },
+               8, muted, false, juce::Justification::centredRight);
     }
 
     juce::Path vocal, beat;
-    constexpr int points = 256;
+    constexpr int points = 512;
     for (int i = 0; i < points; ++i)
     {
-        const float x = plot.getX() + plot.getWidth() * (float) i / (float) (points - 1);
-        const float vm = audioProcessor.getVocalMagnitude (i * 4);
-        const float bm = audioProcessor.getBeatMagnitude (i * 4);
-        const float vy = plot.getBottom() - juce::jlimit (0.0f, 1.0f, vm * 3.0f) * plot.getHeight();
-        const float by = plot.getBottom() - juce::jlimit (0.0f, 1.0f, bm * 3.0f) * plot.getHeight();
+        const auto norm = static_cast<float> (i) / static_cast<float> (points - 1);
+        const auto hz = minHz * std::pow (maxHz / minHz, norm);
+        const auto bin = juce::jlimit (1, SpectralAnalyzer::spectrumSize - 1,
+            juce::roundToInt (hz * static_cast<float> (SpectralAnalyzer::fftSize) / static_cast<float> (sampleRate)));
+        const auto x = xForFrequency (hz);
+        const auto vocalDb = juce::Decibels::gainToDecibels (audioProcessor.getVocalMagnitude (bin) * 4.0f, minDb);
+        const auto beatDb = juce::Decibels::gainToDecibels (audioProcessor.getBeatMagnitude (bin) * 4.0f, minDb);
+        const auto vy = yForDb (vocalDb);
+        const auto by = yForDb (beatDb);
         if (i == 0) { vocal.startNewSubPath (x, vy); beat.startNewSubPath (x, by); }
         else { vocal.lineTo (x, vy); beat.lineTo (x, by); }
     }
-    g.setColour (cyan); g.strokePath (vocal, juce::PathStrokeType (2.0f));
-    g.setColour (orange); g.strokePath (beat, juce::PathStrokeType (1.8f));
+    g.setColour (cyan.withAlpha (0.95f));
+    g.strokePath (vocal, juce::PathStrokeType (2.0f));
+    g.setColour (orange.withAlpha (0.90f));
+    g.strokePath (beat, juce::PathStrokeType (1.8f));
+
+    // Actual six-band gain-change telemetry, shown as a separate lower overlay.
+    juce::Path correction;
+    for (int band = 0; band < IntelligentMaskingProcessor::bandCount; ++band)
+    {
+        const auto hz = IntelligentMaskingProcessor::centres[static_cast<size_t> (band)];
+        const auto x = xForFrequency (hz);
+        const auto gainDb = audioProcessor.getReductionDb (band);
+        const auto y = plot.getBottom() - (juce::jlimit (-4.5f, 1.2f, gainDb) + 4.5f)
+                                           / 5.7f * (plot.getHeight() * 0.28f);
+        if (band == 0) correction.startNewSubPath (x, y);
+        else correction.lineTo (x, y);
+        g.setColour (green);
+        g.fillEllipse (x - 3.0f, y - 3.0f, 6.0f, 6.0f);
+    }
+    g.setColour (green.withAlpha (0.9f));
+    g.strokePath (correction, juce::PathStrokeType (1.6f));
 
     const int sideX = w - 150;
     g.setColour (panel);
