@@ -1,0 +1,39 @@
+name: Build VST3 (macOS)
+
+on:
+  push:
+    branches: [main, "feature/**"]
+    paths:
+      - "plugin/**"
+      - ".github/workflows/build-vst3-macos.yml"
+  pull_request:
+    paths:
+      - "plugin/**"
+      - ".github/workflows/build-vst3-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode command-line tools
+        run: xcode-select -p
+
+      - name: Configure
+        run: cmake -S plugin -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Upload VST3 bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: 272MusicRecords-INTELLIGENCE-VST3-macOS
+          path: build/272MusicRecordsIntelligence_artefacts/Release/VST3/
+          if-no-files-found: error
