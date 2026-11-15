@@ -8,120 +8,226 @@
 class IntelligentMaskingProcessor final
 {
 public:
-    static constexpr int bandCount = 8;
+    // Twenty-four logarithmically spaced bands from the low vocal range to air.
+    // This is an original adaptive spectral-balance design, not Soundtheory code.
+    static constexpr int bandCount = 24;
     static constexpr std::array<float, bandCount> centres
-        { 100.0f, 220.0f, 450.0f, 900.0f, 1800.0f, 3600.0f, 7200.0f, 12000.0f };
+    {
+        65.0f, 83.5f, 107.0f, 137.0f, 176.0f, 226.0f,
+        290.0f, 372.0f, 477.0f, 612.0f, 785.0f, 1006.0f,
+        1290.0f, 1654.0f, 2122.0f, 2722.0f, 3491.0f, 4478.0f,
+        5742.0f, 7369.0f, 9457.0f, 12129.0f, 15561.0f, 17000.0f
+    };
 
     void prepare (double sampleRate) noexcept
     {
         sr = sampleRate > 1000.0 ? sampleRate : 44100.0;
         reset();
     }
+
     void reset() noexcept
     {
-        for (auto& channel : states) for (auto& state : channel) state = {};
-        for (auto& gain : smoothedDb) gain = 0.0f;
-        for (auto& gain : displayedReductionDb) gain.store (0.0f, std::memory_order_relaxed);
-    }
-    void setDepth (float value) noexcept { depth = juce::jlimit (0.0f, 1.0f, value); }
-    void setTame (float value) noexcept { tame = juce::jlimit (0.0f, 1.0f, value); }
-    void setRecover (float value) noexcept { recover = juce::jlimit (0.0f, 1.0f, value); }
-    void setBias (float value) noexcept { bias = juce::jlimit (-1.0f, 1.0f, value); }
-    void setBrighten (float value) noexcept { brighten = juce::jlimit (0.0f, 1.0f, value); }
-    void setEnabled (bool value) noexcept
-    {
-        enabled = value;
-        if (! enabled)
-        {
-            for (size_t band = 0; band < smoothedDb.size(); ++band)
-            {
-                smoothedDb[band] = 0.0f;
-                displayedReductionDb[band].store (0.0f, std::memory_order_relaxed);
-            }
-        }
+        for (auto& channel : states)
+            for (auto& state : channel)
+                state = {};
+
+        smoothedDb.fill (0.0f);
+        for (auto& value : displayedGainDb)
+            value.store (0.0f, std::memory_order_relaxed);
+
+        for (int band = 0; band < bandCount; ++band)
+            updateCoefficients (band, 0.0f);
     }
 
-    void process (juce::AudioBuffer<float>& vocal, const std::array<float, bandCount>& vocalBands,
-                  const std::array<float, bandCount>& beatBands) noexcept
+    void setRecover (float value) noexcept { recover = juce::jlimit (0.0f, 200.0f, value); }
+    void setTame (float value) noexcept { tame = juce::jlimit (0.0f, 200.0f, value); }
+    void setBias (float value) noexcept { bias = juce::jlimit (-100.0f, 100.0f, value); }
+    void setBrighten (float value) noexcept { brighten = juce::jlimit (-100.0f, 100.0f, value); }
+    void setBoost (float value) noexcept { boost = juce::jlimit (-50.0f, 50.0f, value); }
+    void setEnabled (bool value) noexcept { enabled = value; }
+
+    void process (juce::AudioBuffer<float>& vocal,
+                  const std::array<float, bandCount>& bandLevels) noexcept
     {
         const auto channels = juce::jmin (2, vocal.getNumChannels());
-        if (! enabled || channels == 0) return;
-        std::array<float, bandCount> targetDb {};
-        for (int band = 0; band < bandCount; ++band)
-        {
-            const auto v = juce::jmax (vocalBands[static_cast<size_t> (band)], 1.0e-7f);
-            const auto b = juce::jmax (beatBands[static_cast<size_t> (band)], 1.0e-7f);
-            const auto vocalDb = juce::Decibels::gainToDecibels (v, -96.0f);
-            const auto beatDb = juce::Decibels::gainToDecibels (b, -96.0f);
+        const auto numSamples = vocal.getNumSamples();
+        if (channels == 0 || numSamples == 0)
+            return;
 
-            // Positive competition means the beat is stronger in this band.
-            // Since this processor outputs the vocal only, Recover gently lifts
-            // under-represented vocal bands while Tame restrains vocal bands
-            // that already dominate the reference.
-            const auto competition = juce::jlimit (-1.0f, 1.0f,
-                (beatDb - vocalDb + bias * 12.0f) / 18.0f);
-            const auto vocalPresence = juce::jlimit (0.0f, 1.0f, (vocalDb + 66.0f) / 42.0f);
-            const auto recoverLift = juce::jmax (0.0f, competition) * recover * depth * 4.0f;
-            const auto tameCut = juce::jmax (0.0f, -competition) * vocalPresence * tame * depth * 3.0f;
-            const auto highBandBrighten = band >= 6 ? brighten * recover * depth * 1.5f : 0.0f;
-            targetDb[static_cast<size_t> (band)] = juce::jlimit (-4.5f, 5.0f,
-                recoverLift + highBandBrighten - tameCut);
+        std::array<float, bandCount> targetDb {};
+        float totalEnergy = 0.0f;
+
+        for (const auto level : bandLevels)
+            totalEnergy += level;
+
+        const bool hasSignal = totalEnergy > 1.0e-7f;
+        if (enabled && hasSignal)
+        {
+            std::array<float, bandCount> levelDb {};
+            for (int band = 0; band < bandCount; ++band)
+                levelDb[static_cast<size_t> (band)] =
+                    juce::Decibels::gainToDecibels (
+                        juce::jmax (bandLevels[static_cast<size_t> (band)], 1.0e-9f), -120.0f);
+
+            // Estimate the local spectral neighbourhood without using an external
+            // reference signal. A band above its neighbourhood is dominant;
+            // a band below it is potentially masked by nearby spectral energy.
+            for (int band = 0; band < bandCount; ++band)
+            {
+                float neighbourhood = 0.0f;
+                float weightSum = 0.0f;
+
+                for (int offset = -3; offset <= 3; ++offset)
+                {
+                    if (offset == 0)
+                        continue;
+
+                    const int neighbour = band + offset;
+                    if (neighbour < 0 || neighbour >= bandCount)
+                        continue;
+
+                    const float weight = offset == -1 || offset == 1 ? 1.0f
+                                       : offset == -2 || offset == 2 ? 0.65f : 0.35f;
+                    neighbourhood += levelDb[static_cast<size_t> (neighbour)] * weight;
+                    weightSum += weight;
+                }
+
+                const float localDb = weightSum > 0.0f ? neighbourhood / weightSum
+                                                       : levelDb[static_cast<size_t> (band)];
+                const float prominence = levelDb[static_cast<size_t> (band)] - localDb;
+
+                // Positive Bias gives Recover more classification space;
+                // negative Bias gives Tame more classification space.
+                const float biasDb = bias * 0.045f;
+                const float recoverClass = -prominence + biasDb;
+                const float tameClass = prominence - biasDb;
+
+                const float recoverNeed = juce::jlimit (0.0f, 1.0f,
+                    (recoverClass - 1.25f) / 7.0f);
+                const float tameNeed = juce::jlimit (0.0f, 1.0f,
+                    (tameClass - 1.25f) / 7.0f);
+
+                // The two primary controls can both create positive and negative
+                // corrections across the spectrum; their ranges follow 0–200%.
+                const float recoverDb = recoverNeed * (recover / 100.0f) * 4.0f;
+                const float tameDb = tameNeed * (tame / 100.0f) * 4.0f;
+                targetDb[static_cast<size_t> (band)] = recoverDb - tameDb;
+            }
+
+            // Brighten shifts the unmasking balance toward darker or brighter
+            // regions. It is intentionally secondary to Recover and Tame.
+            if (recover > 0.0f || tame > 0.0f)
+            {
+                for (int band = 0; band < bandCount; ++band)
+                {
+                    const float octavesFrom1k = std::log2 (centres[static_cast<size_t> (band)] / 1000.0f);
+                    const float frequencyPosition = juce::jlimit (-1.0f, 1.0f, octavesFrom1k / 4.0f);
+                    targetDb[static_cast<size_t> (band)] +=
+                        (brighten / 100.0f) * frequencyPosition * 1.2f;
+                }
+            }
+
+            // Boost is an independent bass/mid tonal-balance control.
+            const float boostAmount = boost / 50.0f;
+            for (int band = 0; band < bandCount; ++band)
+            {
+                const float hz = centres[static_cast<size_t> (band)];
+                const float bassOctaves = std::log2 (hz / 100.0f);
+                const float midOctaves = std::log2 (hz / 1400.0f);
+                const float bass = std::exp (-0.5f * bassOctaves * bassOctaves / (1.15f * 1.15f));
+                const float mids = std::exp (-0.5f * midOctaves * midOctaves / (1.35f * 1.35f));
+                targetDb[static_cast<size_t> (band)] += boostAmount * (3.0f * bass - 1.5f * mids);
+            }
+
+            // Remove the energy-weighted mean correction to avoid turning the
+            // adaptive EQ into a hidden master-volume control.
+            float weightedGain = 0.0f;
+            float weightTotal = 0.0f;
+            for (int band = 0; band < bandCount; ++band)
+            {
+                const float weight = bandLevels[static_cast<size_t> (band)];
+                weightedGain += targetDb[static_cast<size_t> (band)] * weight;
+                weightTotal += weight;
+            }
+
+            if (weightTotal > 1.0e-8f)
+            {
+                const float meanGain = weightedGain / weightTotal;
+                for (auto& gain : targetDb)
+                    gain = juce::jlimit (-8.0f, 8.0f, gain - meanGain);
+            }
         }
-        const auto smoothing = 1.0f - std::exp (-static_cast<float> (vocal.getNumSamples())
-                                                  / (static_cast<float> (sr) * 0.035f));
+
+        const float blockSeconds = static_cast<float> (numSamples) / static_cast<float> (sr);
         for (int band = 0; band < bandCount; ++band)
         {
-            smoothedDb[static_cast<size_t> (band)] += smoothing
-                * (targetDb[static_cast<size_t> (band)] - smoothedDb[static_cast<size_t> (band)]);
-            displayedReductionDb[static_cast<size_t> (band)].store (
-                smoothedDb[static_cast<size_t> (band)], std::memory_order_relaxed);
+            auto& current = smoothedDb[static_cast<size_t> (band)];
+            const float target = targetDb[static_cast<size_t> (band)];
+            const float timeConstant = target > current ? 0.025f : 0.085f;
+            const float smoothing = 1.0f - std::exp (-blockSeconds / timeConstant);
+            current += smoothing * (target - current);
+
+            // The graph reads the very same gain values used by the filters.
+            displayedGainDb[static_cast<size_t> (band)].store (current, std::memory_order_relaxed);
+            updateCoefficients (band, current);
         }
-        for (int band = 0; band < bandCount; ++band)
-            updateCoefficients (band, smoothedDb[static_cast<size_t> (band)]);
+
         for (int channel = 0; channel < channels; ++channel)
         {
             auto* data = vocal.getWritePointer (channel);
-            for (int sample = 0; sample < vocal.getNumSamples(); ++sample)
+            for (int sample = 0; sample < numSamples; ++sample)
             {
-                auto x = data[sample];
+                float x = data[sample];
                 for (int band = 0; band < bandCount; ++band)
                 {
-                    auto& s = states[static_cast<size_t> (channel)][static_cast<size_t> (band)];
-                    const auto& c = coeffs[static_cast<size_t> (band)];
-                    const auto y = c.b0 * x + s.z1;
-                    s.z1 = c.b1 * x - c.a1 * y + s.z2;
-                    s.z2 = c.b2 * x - c.a2 * y;
+                    auto& state = states[static_cast<size_t> (channel)][static_cast<size_t> (band)];
+                    const auto& coeff = coefficients[static_cast<size_t> (band)];
+                    const float y = coeff.b0 * x + state.z1;
+                    state.z1 = coeff.b1 * x - coeff.a1 * y + state.z2;
+                    state.z2 = coeff.b2 * x - coeff.a2 * y;
                     x = y;
                 }
                 data[sample] = x;
             }
         }
     }
-    float getReductionDb (int band) const noexcept
+
+    float getGainDb (int band) const noexcept
     {
         return band >= 0 && band < bandCount
-            ? displayedReductionDb[static_cast<size_t> (band)].load (std::memory_order_relaxed) : 0.0f;
+            ? displayedGainDb[static_cast<size_t> (band)].load (std::memory_order_relaxed)
+            : 0.0f;
     }
+
 private:
-    struct Coefficients { float b0=1, b1=0, b2=0, a1=0, a2=0; };
-    struct State { float z1=0, z2=0; };
+    struct Coefficients { float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f; };
+    struct State { float z1 = 0.0f, z2 = 0.0f; };
+
     void updateCoefficients (int band, float gainDb) noexcept
     {
-        constexpr float q = 1.05f;
-        const auto A = std::pow (10.0f, gainDb / 40.0f);
-        const auto w = juce::MathConstants<float>::twoPi * centres[static_cast<size_t> (band)] / static_cast<float> (sr);
-        const auto cs = std::cos (w), sn = std::sin (w), alpha = sn / (2.0f * q);
-        const auto a0 = 1.0f + alpha / A;
-        auto& c = coeffs[static_cast<size_t> (band)];
-        c.b0 = (1.0f + alpha * A) / a0; c.b1 = (-2.0f * cs) / a0;
-        c.b2 = (1.0f - alpha * A) / a0; c.a1 = (-2.0f * cs) / a0;
-        c.a2 = (1.0f - alpha / A) / a0;
+        constexpr float q = 2.45f;
+        const float frequency = juce::jlimit (20.0f, static_cast<float> (sr * 0.45),
+                                               centres[static_cast<size_t> (band)]);
+        const float amplitude = std::pow (10.0f, gainDb / 40.0f);
+        const float w = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (sr);
+        const float cosine = std::cos (w);
+        const float sine = std::sin (w);
+        const float alpha = sine / (2.0f * q);
+        const float a0 = 1.0f + alpha / amplitude;
+
+        auto& c = coefficients[static_cast<size_t> (band)];
+        c.b0 = (1.0f + alpha * amplitude) / a0;
+        c.b1 = (-2.0f * cosine) / a0;
+        c.b2 = (1.0f - alpha * amplitude) / a0;
+        c.a1 = (-2.0f * cosine) / a0;
+        c.a2 = (1.0f - alpha / amplitude) / a0;
     }
+
     double sr = 44100.0;
-    float depth = 0.5f, tame = 0.7f, recover = 0.25f, bias = 0.0f, brighten = 0.0f;
+    float recover = 0.0f, tame = 0.0f, bias = 0.0f, brighten = 0.0f, boost = 0.0f;
     bool enabled = false;
-    std::array<Coefficients, bandCount> coeffs {};
+    std::array<Coefficients, bandCount> coefficients {};
     std::array<std::array<State, bandCount>, 2> states {};
     std::array<float, bandCount> smoothedDb {};
-    std::array<std::atomic<float>, bandCount> displayedReductionDb {};
+    std::array<std::atomic<float>, bandCount> displayedGainDb {};
 };
