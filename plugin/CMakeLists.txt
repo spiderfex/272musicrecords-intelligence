@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(272MusicRecordsIntelligence VERSION 0.1.0 LANGUAGES CXX)
+project(272MusicRecordsIntelligence VERSION 0.2.0 LANGUAGES CXX)
 
 # JUCE is fetched at a pinned release tag. No framework source is vendored.
 include(FetchContent)
@@ -19,7 +19,7 @@ juce_add_plugin(272MusicRecordsIntelligence
     PLUGIN_CODE MInt
     FORMATS VST3
     PRODUCT_NAME "272MusicRecords INTELLIGENCE"
-    DESCRIPTION "Vocal and beat interaction analysis"
+    DESCRIPTION "Vocal-only adaptive spectral equalizer"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -55,4 +55,4 @@ target_link_libraries(272MusicRecordsIntelligence
         juce::juce_recommended_warning_flags
 )
 
-# The host sidechain is declared as an optional second input bus in the processor.
+# Vocal-only signal path: the processor has one main input and no auxiliary sidechain bus.
