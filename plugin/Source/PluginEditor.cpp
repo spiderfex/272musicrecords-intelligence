@@ -51,6 +51,24 @@ IntelligenceAudioProcessorEditor::IntelligenceAudioProcessorEditor (Intelligence
     recoverAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "recover", recoverSlider);
     tameAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "tame", tameSlider);
     depthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "depth", depthSlider);
+    setup (biasSlider, biasLabel, "BIAS");
+    biasSlider.setRange (-1.0, 1.0, 0.01);
+    biasSlider.setTextValueSuffix ("");
+    setup (brightenSlider, brightenLabel, "BRIGHTEN");
+    setup (boostSlider, boostLabel, "BOOST");
+    boostSlider.setRange (-6.0, 6.0, 0.01);
+    boostSlider.setTextValueSuffix (" dB");
+    setup (outputSlider, outputLabel, "OUTPUT");
+    outputSlider.setRange (-24.0, 12.0, 0.01);
+    outputSlider.setTextValueSuffix (" dB");
+    biasAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "bias", biasSlider);
+    brightenAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "brighten", brightenSlider);
+    boostAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "boost", boostSlider);
+    outputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (audioProcessor.parameters, "output", outputSlider);
+    bypassButton.setColour (juce::ToggleButton::textColourId, white);
+    bypassButton.setColour (juce::ToggleButton::tickColourId, orange);
+    addAndMakeVisible (bypassButton);
+    bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (audioProcessor.parameters, "bypass", bypassButton);
     startTimerHz (24);
 }
 
@@ -178,7 +196,11 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (10, 20, 28));
     g.fillRoundedRectangle ((float) sideX + 42, 164.0f, 28.0f, graph.getHeight() - 92.0f, 5.0f);
     g.setColour (green);
-    g.fillRoundedRectangle ((float) sideX + 46, 250.0f, 20.0f, juce::jmax (12.0f, graph.getHeight() - 180.0f), 3.0f);
+    const auto outputDb = juce::Decibels::gainToDecibels (audioProcessor.getOutputPeak (0), -60.0f);
+    const auto outputNorm = juce::jlimit (0.0f, 1.0f, (outputDb + 60.0f) / 60.0f);
+    const auto meterHeight = (graph.getHeight() - 92.0f) * outputNorm;
+    g.fillRoundedRectangle ((float) sideX + 46, graph.getBottom() - 18.0f - meterHeight,
+                            20.0f, juce::jmax (2.0f, meterHeight), 3.0f);
     label (g, "dB", { sideX + 12, juce::roundToInt (graph.getBottom() - 30.0f), 88, 16 }, 9, muted, false, juce::Justification::centred);
 
     const int bottomY = h - 96;
@@ -190,26 +212,37 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     {
         g.setColour (juce::Colour (11, 24, 30));
         g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + (float) row * 27.0f, (float) w - 235.0f, 7.0f, 3.0f);
+        const auto peak = row == 0 ? audioProcessor.getInputPeak (0) : audioProcessor.getInputPeak (1);
+        const auto peakDb = juce::Decibels::gainToDecibels (peak, -60.0f);
+        const auto meterNorm = juce::jlimit (0.0f, 1.0f, (peakDb + 60.0f) / 60.0f);
         g.setColour (green);
-        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + (float) row * 27.0f, (float) (w - 235) * 0.62f, 7.0f, 3.0f);
+        g.fillRoundedRectangle (105.0f, (float) bottomY + 10.0f + (float) row * 27.0f,
+                                (float) (w - 235) * meterNorm, 7.0f, 3.0f);
     }
     label (g, "272 MUSIC RECORDS  ·  SIDECHAIN IS ANALYSIS ONLY", { 30, h - 23, w - 60, 14 }, 8, muted, true);
 }
 
 void IntelligenceAudioProcessorEditor::resized()
 {
-    const int topY = 27;
-    intelligenceButton.setBounds (getWidth() - 190, topY, 160, 30);
-    const int startX = 330, gap = 18, cellW = (getWidth() - startX - 220) / 3;
-    auto place = [cellW] (juce::Label& l, juce::Slider& s, int index)
+    const int topY = 26;
+    intelligenceButton.setBounds (getWidth() - 170, topY, 145, 28);
+    bypassButton.setBounds (getWidth() - 170, topY + 30, 145, 24);
+    const int left = 300;
+    const int available = getWidth() - left - 190;
+    const int cell = available / 4;
+    auto place = [cell] (juce::Label& l, juce::Slider& s, int index)
     {
-        const int x = 330 + index * (cellW + 18);
-        l.setBounds (x, 24, 78, 22);
-        s.setBounds (x + 78, 23, cellW - 78, 28);
+        const int x = 24 + index * cell;
+        l.setBounds (x, 24, 78, 20);
+        s.setBounds (x, 43, cell - 10, 25);
     };
     place (recoverLabel, recoverSlider, 0);
     place (tameLabel, tameSlider, 1);
     place (depthLabel, depthSlider, 2);
+    place (biasLabel, biasSlider, 3);
+    place (brightenLabel, brightenSlider, 4);
+    place (boostLabel, boostSlider, 5);
+    place (outputLabel, outputSlider, 6);
 }
 
 void IntelligenceAudioProcessorEditor::timerCallback() { repaint(); }
