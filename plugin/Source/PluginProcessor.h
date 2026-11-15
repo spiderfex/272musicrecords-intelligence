@@ -39,6 +39,9 @@ public:
     float getTotalResponseDb (float frequencyHz) const noexcept { return maskingProcessor.getTotalResponseDb (frequencyHz); }
     float getInputPeak (int channel) const noexcept { return inputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
     float getOutputPeak (int channel) const noexcept { return outputPeak[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
+    float getInputPeakHold (int channel) const noexcept { return inputPeakHold[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
+    float getOutputPeakHold (int channel) const noexcept { return outputPeakHold[static_cast<size_t> (juce::jlimit (0, 1, channel))].load(); }
+    void resetPeakHold() noexcept { for (auto& v : inputPeakHold) v.store (0.0f); for (auto& v : outputPeakHold) v.store (0.0f); }
     double getAnalysisSampleRate() const noexcept { return currentSampleRate.load (std::memory_order_relaxed); }
 
     juce::AudioProcessorValueTreeState parameters;
@@ -50,7 +53,7 @@ private:
     SpectralAnalyzer vocalAnalyzer;
     IntelligentMaskingProcessor maskingProcessor;
     std::atomic<double> currentSampleRate { 44100.0 };
-    std::array<std::atomic<float>, 2> inputPeak {}, outputPeak {};
+    std::array<std::atomic<float>, 2> inputPeak {}, outputPeak {}, inputPeakHold {}, outputPeakHold {};
     std::array<float, 2> inputPeakSmooth {}, outputPeakSmooth {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntelligenceAudioProcessor)
