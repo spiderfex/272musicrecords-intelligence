@@ -88,6 +88,62 @@ IntelligenceAudioProcessor::getVocalBandLevels() const noexcept
     return levels;
 }
 
+std::array<float, IntelligentMaskingProcessor::bandCount>
+IntelligenceAudioProcessor::getVocalResonanceScores() const noexcept
+{
+    std::array<float, IntelligentMaskingProcessor::bandCount> scores {};
+    const float sampleRate = static_cast<float> (currentSampleRate.load (std::memory_order_relaxed));
+    const float binHz = sampleRate / static_cast<float> (SpectralAnalyzer::fftSize);
+    const auto& centres = IntelligentMaskingProcessor::centres;
+
+    for (int band = 0; band < IntelligentMaskingProcessor::bandCount; ++band)
+    {
+        const float centre = centres[static_cast<size_t> (band)];
+        const float lower = band == 0
+            ? centre / std::sqrt (centres[1] / centre)
+            : std::sqrt (centres[static_cast<size_t> (band - 1)] * centre);
+        const float upper = band == IntelligentMaskingProcessor::bandCount - 1
+            ? centre * std::sqrt (centre / centres[static_cast<size_t> (band - 1)])
+            : std::sqrt (centre * centres[static_cast<size_t> (band + 1)]);
+
+        const int firstBin = juce::jlimit (2, SpectralAnalyzer::spectrumSize - 6,
+                                           juce::roundToInt (lower / binHz));
+        const int lastBin = juce::jlimit (firstBin + 1, SpectralAnalyzer::spectrumSize - 3,
+                                          juce::roundToInt (upper / binHz));
+
+        int peakBin = firstBin;
+        float peak = 0.0f;
+        for (int bin = firstBin; bin <= lastBin; ++bin)
+        {
+            const float magnitude = vocalAnalyzer.getMagnitude (bin);
+            if (magnitude > peak)
+            {
+                peak = magnitude;
+                peakBin = bin;
+            }
+        }
+
+        float neighbourPower = 0.0f;
+        int neighbourCount = 0;
+        for (int offset = -5; offset <= 5; ++offset)
+        {
+            if (std::abs (offset) <= 1)
+                continue;
+            const float magnitude = vocalAnalyzer.getMagnitude (peakBin + offset);
+            neighbourPower += magnitude * magnitude;
+            ++neighbourCount;
+        }
+
+        const float localFloor = neighbourCount > 0
+            ? std::sqrt (neighbourPower / static_cast<float> (neighbourCount)) : 0.0f;
+        const float peakDb = juce::Decibels::gainToDecibels (peak, -120.0f);
+        const float floorDb = juce::Decibels::gainToDecibels (localFloor, -120.0f);
+        scores[static_cast<size_t> (band)] = juce::jlimit (0.0f, 12.0f, peakDb - floorDb);
+    }
+
+    return scores;
+}
+
 void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -120,7 +176,7 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // The main vocal input is the only analysis source. There is no beat bus
     // and no sidechain dependency in this processor.
     if (! bypassed)
-        maskingProcessor.process (vocalOutput, getVocalBandLevels());
+        maskingProcessor.process (vocalOutput, getVocalBandLevels(), getVocalResonanceScores());
 
     const float outputGain = bypassed ? 1.0f : juce::Decibels::decibelsToGain (
         parameters.getRawParameterValue ("output")->load());
