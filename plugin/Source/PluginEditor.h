@@ -14,9 +14,12 @@ public:
 private:
     IntelligenceAudioProcessor& audioProcessor;
     juce::ToggleButton intelligenceButton { "INTELLIGENCE ON" };
-    juce::Slider depthSlider, tameSlider, recoverSlider;
-    juce::Label depthLabel, tameLabel, recoverLabel;
+    juce::Slider depthSlider, tameSlider, recoverSlider, biasSlider, brightenSlider, boostSlider, outputSlider;
+    juce::Label depthLabel, tameLabel, recoverLabel, biasLabel, brightenLabel, boostLabel, outputLabel;
+    juce::ToggleButton bypassButton { "BYPASS" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enabledAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> depthAttachment, tameAttachment, recoverAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> biasAttachment, brightenAttachment, boostAttachment, outputAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntelligenceAudioProcessorEditor)
 };
