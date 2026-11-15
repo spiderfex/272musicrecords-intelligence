@@ -224,34 +224,13 @@ private:
 
     void updateDisplayedResponse() noexcept
     {
-        // Evaluate the complete cascade of peaking filters at every graph
-        // anchor frequency. The UI therefore shows the applied response,
-        // including the interaction/overlap between adjacent filters.
-        for (int point = 0; point < bandCount; ++point)
-        {
-            const float frequency = centres[static_cast<size_t> (point)];
-            const float w = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (sr);
-            const float c1 = std::cos (w), s1 = std::sin (w);
-            const float c2 = std::cos (2.0f * w), s2 = std::sin (2.0f * w);
-            float magnitude = 1.0f;
-
-            for (const auto& coeff : coefficients)
-            {
-                const float numeratorReal = coeff.b0 + coeff.b1 * c1 + coeff.b2 * c2;
-                const float numeratorImag = -coeff.b1 * s1 - coeff.b2 * s2;
-                const float denominatorReal = 1.0f + coeff.a1 * c1 + coeff.a2 * c2;
-                const float denominatorImag = -coeff.a1 * s1 - coeff.a2 * s2;
-
-                const float numerator = std::sqrt (numeratorReal * numeratorReal
-                                                   + numeratorImag * numeratorImag);
-                const float denominator = std::sqrt (denominatorReal * denominatorReal
-                                                     + denominatorImag * denominatorImag);
-                magnitude *= numerator / juce::jmax (denominator, 1.0e-9f);
-            }
-
-            displayedResponseDb[static_cast<size_t> (point)].store (
-                juce::Decibels::gainToDecibels (magnitude, -80.0f), std::memory_order_relaxed);
-        }
+        // Show the live per-band correction commands, referenced to 0 dB.
+        // Positive values are boosts; negative values are cuts. Plotting the
+        // individual adaptive bands keeps both directions visible instead
+        // of letting overlapping filter responses hide the signed decisions.
+        for (int band = 0; band < bandCount; ++band)
+            displayedResponseDb[static_cast<size_t> (band)].store (
+                smoothedDb[static_cast<size_t> (band)], std::memory_order_relaxed);
     }
 
     double sr = 44100.0;
