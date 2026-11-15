@@ -97,10 +97,10 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     label (g, "272", { 28, 20, 55, 40 }, 29, cyan, true);
     label (g, "MUSIC RECORDS", { 88, 22, 180, 18 }, 11, white, true);
     label (g, "INTELLIGENCE", { 88, 40, 210, 23 }, 17, white, true);
-    label (g, "VOCAL-ONLY ADAPTIVE EQUALIZER", { 28, 70, 340, 18 }, 9, muted, true);
+    label (g, "VOCAL-ONLY ADAPTIVE EQUALIZER", { 28, 55, 340, 16 }, 9, muted, true);
 
-    auto graph = juce::Rectangle<float> (24, 112, static_cast<float> (w) - 190.0f,
-                                         static_cast<float> (h) - 230.0f);
+    auto graph = juce::Rectangle<float> (24, 166, static_cast<float> (w) - 190.0f,
+                                         static_cast<float> (h) - 284.0f);
     g.setColour (panel);
     g.fillRoundedRectangle (graph, 8.0f);
     label (g, "SPECTRAL INTELLIGENCE", { 40, 121, 260, 22 }, 11, white, true);
@@ -205,10 +205,10 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
 
     const int meterX = w - 150;
     g.setColour (panel);
-    g.fillRoundedRectangle (static_cast<float> (meterX), 112.0f, 112.0f, graph.getHeight(), 8.0f);
+    g.fillRoundedRectangle (static_cast<float> (meterX), 166.0f, 112.0f, graph.getHeight(), 8.0f);
     label (g, "OUTPUT", { meterX + 12, 128, 88, 18 }, 10, white, true, juce::Justification::centred);
     g.setColour (juce::Colour (10, 20, 28));
-    g.fillRoundedRectangle (static_cast<float> (meterX) + 42.0f, 164.0f,
+    g.fillRoundedRectangle (static_cast<float> (meterX) + 42.0f, 218.0f,
                             28.0f, graph.getHeight() - 92.0f, 5.0f);
 
     g.setColour (green);
@@ -251,16 +251,18 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
 
 void IntelligenceAudioProcessorEditor::resized()
 {
-    intelligenceButton.setBounds (getWidth() - 170, 26, 145, 28);
-    bypassButton.setBounds (getWidth() - 170, 56, 145, 24);
+    // Keep the brand and mode switches in the header; controls occupy two
+    // dedicated rows below it, so nothing overlaps the logo or graph.
+    intelligenceButton.setBounds (getWidth() - 170, 20, 145, 26);
+    bypassButton.setBounds (getWidth() - 170, 48, 145, 24);
 
-    const int cell = (getWidth() - 220) / 4;
+    const int cell = (getWidth() - 48) / 3;
     auto place = [cell] (juce::Label& controlLabel, juce::Slider& slider, int index)
     {
-        const int x = 24 + (index % 4) * cell;
-        const int y = 20 + (index / 4) * 42;
-        controlLabel.setBounds (x, y, 82, 18);
-        slider.setBounds (x, y + 18, cell - 10, 22);
+        const int x = 24 + (index % 3) * cell;
+        const int y = 78 + (index / 3) * 44;
+        controlLabel.setBounds (x, y, 90, 16);
+        slider.setBounds (x, y + 16, cell - 18, 24);
     };
 
     place (recoverLabel, recoverSlider, 0);
