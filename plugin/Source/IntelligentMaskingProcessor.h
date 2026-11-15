@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <complex>
 
 class IntelligentMaskingProcessor final
 {
@@ -196,6 +197,27 @@ public:
         return band >= 0 && band < bandCount
             ? displayedResponseDb[static_cast<size_t> (band)].load (std::memory_order_relaxed)
             : 0.0f;
+    }
+
+    // Evaluate the complete cascade of active biquad filters at one frequency.
+    // This is the actual magnitude response, not the per-band control values.
+    float getTotalResponseDb (float frequencyHz) const noexcept
+    {
+        using Complex = std::complex<float>;
+        const float w = juce::MathConstants<float>::twoPi
+                      * juce::jlimit (1.0f, static_cast<float> (sr * 0.49), frequencyHz)
+                      / static_cast<float> (sr);
+        const Complex z1 (std::cos (w), -std::sin (w));
+        const Complex z2 = z1 * z1;
+        Complex total (1.0f, 0.0f);
+        for (const auto& c : coefficients)
+        {
+            const Complex numerator = c.b0 + c.b1 * z1 + c.b2 * z2;
+            const Complex denominator = 1.0f + c.a1 * z1 + c.a2 * z2;
+            if (std::abs (denominator) > 1.0e-12f)
+                total *= numerator / denominator;
+        }
+        return juce::Decibels::gainToDecibels (std::abs (total), -120.0f);
     }
 
 private:
