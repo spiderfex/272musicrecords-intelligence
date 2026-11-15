@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "SpectralAnalyzer.h"
+#include "IntelligentMaskingProcessor.h"
 
 class IntelligenceAudioProcessor final : public juce::AudioProcessor
 {
@@ -34,10 +35,15 @@ public:
 
     float getVocalMagnitude (int bin) const noexcept { return vocalAnalyzer.getMagnitude (bin); }
     float getBeatMagnitude (int bin) const noexcept { return beatAnalyzer.getMagnitude (bin); }
+    juce::AudioProcessorValueTreeState parameters;
 
 private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    std::array<float, IntelligentMaskingProcessor::bandCount> getBandLevels (const SpectralAnalyzer& analyzer) const noexcept;
+
     SpectralAnalyzer vocalAnalyzer;
     SpectralAnalyzer beatAnalyzer;
+    IntelligentMaskingProcessor maskingProcessor;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntelligenceAudioProcessor)
 };
