@@ -48,7 +48,8 @@ public:
     void setEnabled (bool value) noexcept { enabled = value; }
 
     void process (juce::AudioBuffer<float>& vocal,
-                  const std::array<float, bandCount>& bandLevels) noexcept
+                  const std::array<float, bandCount>& bandLevels,
+                  const std::array<float, bandCount>& resonanceScores) noexcept
     {
         const auto channels = juce::jmin (2, vocal.getNumChannels());
         const auto numSamples = vocal.getNumSamples();
@@ -104,16 +105,17 @@ public:
                 const float tameClass = prominence - biasDb;
 
                 const float recoverNeed = juce::jlimit (0.0f, 1.0f,
-                    (recoverClass - 2.5f) / 8.0f);
-                const float tameNeed = juce::jlimit (0.0f, 1.0f,
-                    (tameClass - 2.0f) / 6.0f);
+                    (recoverClass - 4.5f) / 9.0f);
 
-                // Recovery is deliberately conservative: filling spectral dips
-                // can amplify breath, room noise and microphone self-noise.
-                // Tame is stronger because dominant narrow regions are the
-                // primary harshness/resonance problem this processor targets.
-                const float recoverDb = recoverNeed * (recover / 100.0f) * 1.5f;
-                const float tameDb = tameNeed * (tame / 100.0f) * 4.0f;
+                // A separate narrow-peak detector is used for Tame. It compares
+                // the strongest FFT bin in this band with its immediate spectral
+                // neighbours, rather than treating every naturally strong vocal
+                // formant as a harsh resonance.
+                const float resonanceNeed = juce::jlimit (0.0f, 1.0f,
+                    (resonanceScores[static_cast<size_t> (band)] - 3.0f) / 6.0f);
+
+                const float recoverDb = recoverNeed * (recover / 100.0f) * 0.5f;
+                const float tameDb = resonanceNeed * (tame / 100.0f) * 2.5f;
                 targetDb[static_cast<size_t> (band)] = recoverDb - tameDb;
             }
 
@@ -157,7 +159,7 @@ public:
             {
                 const float meanGain = weightedGain / weightTotal;
                 for (auto& gain : targetDb)
-                    gain = juce::jlimit (-4.0f, 1.5f, gain - meanGain);
+                    gain = juce::jlimit (-2.5f, 0.5f, gain - meanGain);
             }
         }
 
@@ -228,7 +230,7 @@ private:
 
     void updateCoefficients (int band, float gainDb) noexcept
     {
-        constexpr float q = 2.45f;
+        constexpr float q = 5.0f;
         const float frequency = juce::jlimit (20.0f, static_cast<float> (sr * 0.45),
                                                centres[static_cast<size_t> (band)]);
         const float amplitude = std::pow (10.0f, gainDb / 40.0f);
