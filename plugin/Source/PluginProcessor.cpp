@@ -30,6 +30,7 @@ IntelligenceAudioProcessor::IntelligenceAudioProcessor()
 
 void IntelligenceAudioProcessor::prepareToPlay (double sampleRate, int)
 {
+    currentSampleRate = sampleRate > 1000.0 ? sampleRate : 44100.0;
     vocalAnalyzer.reset();
     beatAnalyzer.reset();
     maskingProcessor.prepare (sampleRate);
@@ -57,7 +58,7 @@ std::array<float, IntelligentMaskingProcessor::bandCount>
 IntelligenceAudioProcessor::getBandLevels (const SpectralAnalyzer& analyzer) const noexcept
 {
     std::array<float, IntelligentMaskingProcessor::bandCount> levels {};
-    const auto binHz = 44100.0f / static_cast<float> (SpectralAnalyzer::fftSize);
+    const auto binHz = static_cast<float> (currentSampleRate) / static_cast<float> (SpectralAnalyzer::fftSize);
     for (size_t band = 0; band < levels.size(); ++band)
     {
         const auto centreBin = juce::roundToInt (bandCentres[band] / binHz);
@@ -97,11 +98,6 @@ void IntelligenceAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             vocalOutput.copyFrom (channel, 0, vocalInput, channel, 0, samples);
     for (int channel = channels; channel < vocalOutput.getNumChannels(); ++channel)
         vocalOutput.clear (channel, 0, samples);
-
-    // TEMPORARY DIAGNOSTIC: prove that the enabled parameter reaches the vocal output.
-    // Remove this fixed attenuation after the signal-path test.
-    if (parameters.getRawParameterValue ("enabled")->load() > 0.5f)
-        vocalOutput.applyGain (juce::Decibels::decibelsToGain (-12.0f));
 
     maskingProcessor.setEnabled (hasBeat && parameters.getRawParameterValue ("enabled")->load() > 0.5f);
     maskingProcessor.setDepth (parameters.getRawParameterValue ("depth")->load());
