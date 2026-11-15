@@ -32,7 +32,7 @@ public:
                 state = {};
 
         smoothedDb.fill (0.0f);
-        for (auto& value : displayedGainDb)
+        for (auto& value : displayedResponseDb)
             value.store (0.0f, std::memory_order_relaxed);
 
         for (int band = 0; band < bandCount; ++band)
@@ -167,10 +167,9 @@ public:
             const float smoothing = 1.0f - std::exp (-blockSeconds / timeConstant);
             current += smoothing * (target - current);
 
-            // The graph reads the very same gain values used by the filters.
-            displayedGainDb[static_cast<size_t> (band)].store (current, std::memory_order_relaxed);
             updateCoefficients (band, current);
         }
+        updateDisplayedResponse();
 
         for (int channel = 0; channel < channels; ++channel)
         {
@@ -192,10 +191,10 @@ public:
         }
     }
 
-    float getGainDb (int band) const noexcept
+    float getResponseDb (int band) const noexcept
     {
         return band >= 0 && band < bandCount
-            ? displayedGainDb[static_cast<size_t> (band)].load (std::memory_order_relaxed)
+            ? displayedResponseDb[static_cast<size_t> (band)].load (std::memory_order_relaxed)
             : 0.0f;
     }
 
@@ -223,11 +222,43 @@ private:
         c.a2 = (1.0f - alpha / amplitude) / a0;
     }
 
+    void updateDisplayedResponse() noexcept
+    {
+        // Evaluate the complete cascade of peaking filters at every graph
+        // anchor frequency. The UI therefore shows the applied response,
+        // including the interaction/overlap between adjacent filters.
+        for (int point = 0; point < bandCount; ++point)
+        {
+            const float frequency = centres[static_cast<size_t> (point)];
+            const float w = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (sr);
+            const float c1 = std::cos (w), s1 = std::sin (w);
+            const float c2 = std::cos (2.0f * w), s2 = std::sin (2.0f * w);
+            float magnitude = 1.0f;
+
+            for (const auto& coeff : coefficients)
+            {
+                const float numeratorReal = coeff.b0 + coeff.b1 * c1 + coeff.b2 * c2;
+                const float numeratorImag = -coeff.b1 * s1 - coeff.b2 * s2;
+                const float denominatorReal = 1.0f + coeff.a1 * c1 + coeff.a2 * c2;
+                const float denominatorImag = -coeff.a1 * s1 - coeff.a2 * s2;
+
+                const float numerator = std::sqrt (numeratorReal * numeratorReal
+                                                   + numeratorImag * numeratorImag);
+                const float denominator = std::sqrt (denominatorReal * denominatorReal
+                                                     + denominatorImag * denominatorImag);
+                magnitude *= numerator / juce::jmax (denominator, 1.0e-9f);
+            }
+
+            displayedResponseDb[static_cast<size_t> (point)].store (
+                juce::Decibels::gainToDecibels (magnitude, -80.0f), std::memory_order_relaxed);
+        }
+    }
+
     double sr = 44100.0;
     float recover = 0.0f, tame = 0.0f, bias = 0.0f, brighten = 0.0f, boost = 0.0f;
     bool enabled = false;
     std::array<Coefficients, bandCount> coefficients {};
     std::array<std::array<State, bandCount>, 2> states {};
     std::array<float, bandCount> smoothedDb {};
-    std::array<std::atomic<float>, bandCount> displayedGainDb {};
+    std::array<std::atomic<float>, bandCount> displayedResponseDb {};
 };
