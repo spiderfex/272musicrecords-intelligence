@@ -79,7 +79,15 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
     const auto sampleRate = audioProcessor.getAnalysisSampleRate();
     const float minHz = 20.0f;
     const float maxHz = juce::jmin (20000.0f, static_cast<float> (sampleRate * 0.48));
-    const float minDb = -90.0f, maxDb = 6.0f;
+    float peakDb = -90.0f;
+    for (int bin = 1; bin < SpectralAnalyzer::spectrumSize; ++bin)
+    {
+        const auto vocalDb = juce::Decibels::gainToDecibels (audioProcessor.getVocalMagnitude (bin) * 4.0f, -120.0f);
+        const auto beatDb = juce::Decibels::gainToDecibels (audioProcessor.getBeatMagnitude (bin) * 4.0f, -120.0f);
+        peakDb = juce::jmax (peakDb, juce::jmax (vocalDb, beatDb));
+    }
+    const float minDb = juce::jmax (-108.0f, peakDb - 60.0f);
+    const float maxDb = juce::jmax (-6.0f, peakDb + 6.0f);
     const auto xForFrequency = [&] (float hz)
     {
         const auto norm = std::log (juce::jlimit (minHz, maxHz, hz) / minHz)
