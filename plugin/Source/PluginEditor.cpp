@@ -256,6 +256,16 @@ void IntelligenceAudioProcessorEditor::paint (juce::Graphics& g)
         g.fillRoundedRectangle (105.0f, static_cast<float> (bottomY) + 10.0f
                                 + static_cast<float> (row) * 27.0f,
                                 static_cast<float> (w - 235) * meterNorm, 7.0f, 3.0f);
+
+        const float holdDb = juce::Decibels::gainToDecibels (audioProcessor.getInputPeakHold (row), -60.0f);
+        const float holdNorm = juce::jlimit (0.0f, 1.0f, (holdDb + 60.0f) / 60.0f);
+        const float holdX = 105.0f + static_cast<float> (w - 235) * holdNorm;
+        g.setColour (juce::Colour (255, 190, 70));
+        g.drawVerticalLine (juce::roundToInt (holdX),
+                            bottomY + 8 + row * 27, bottomY + 19 + row * 27);
+        label (g, juce::String (peakDb, 1) + " dBFS",
+               { w - 112, bottomY + 5 + row * 27, 82, 17 }, 9, white, false,
+               juce::Justification::centredRight);
     }
 
     label (g, "272 MUSIC RECORDS  ·  VOCAL INPUT / SELF-ANALYSIS",
