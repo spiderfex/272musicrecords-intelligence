@@ -35,6 +35,8 @@ public:
 
     float getVocalMagnitude (int bin) const noexcept { return vocalAnalyzer.getMagnitude (bin); }
     float getBeatMagnitude (int bin) const noexcept { return beatAnalyzer.getMagnitude (bin); }
+    float getReductionDb (int band) const noexcept { return maskingProcessor.getReductionDb (band); }
+    double getAnalysisSampleRate() const noexcept { return currentSampleRate.load (std::memory_order_relaxed); }
     juce::AudioProcessorValueTreeState parameters;
 
 private:
@@ -44,7 +46,7 @@ private:
     SpectralAnalyzer vocalAnalyzer;
     SpectralAnalyzer beatAnalyzer;
     IntelligentMaskingProcessor maskingProcessor;
-    double currentSampleRate = 44100.0;
+    std::atomic<double> currentSampleRate { 44100.0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IntelligenceAudioProcessor)
 };
