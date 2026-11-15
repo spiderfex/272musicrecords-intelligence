@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(272MusicRecordsIntelligence VERSION 0.2.0 LANGUAGES CXX)
+project(272MusicRecordsIntelligence VERSION 0.2.0 LANGUAGES C CXX)
 
 # JUCE is fetched at a pinned release tag. No framework source is vendored.
 include(FetchContent)
